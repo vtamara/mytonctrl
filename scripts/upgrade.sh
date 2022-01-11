@@ -22,6 +22,7 @@ ENDC='\033[0m'
 
 # Go to work dir
 cd /usr/src/ton
+git pull
 
 # Adjust repo
 if [ -z ${repo+x} ]; then
@@ -36,6 +37,7 @@ if [ -z ${branch+x} ]; then
 	echo "branch without changes"
 else
 	git checkout ${branch}
+	git branch --set-upstream-to=origin/${branch} ${branch}
 	git pull --rebase
 fi
 

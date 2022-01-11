@@ -27,8 +27,9 @@ def Init():
 	console.AddItem("nw", CreatNewWallet, local.Translate("nw_cmd"))
 	console.AddItem("aw", ActivateWallet, local.Translate("aw_cmd"))
 	console.AddItem("wl", PrintWalletsList, local.Translate("wl_cmd"))
-	console.AddItem("iw", ImportWalletFromFile, local.Translate("iw_cmd"))
-	console.AddItem("swa", SaveWalletAddressToFile, local.Translate("swa_cmd"))
+	console.AddItem("iw", ImportWallet, local.Translate("iw_cmd"))
+	console.AddItem("swv", SetWalletVersion, local.Translate("swv_cmd"))
+	console.AddItem("ew", ExportWallet, local.Translate("ex_cmd"))
 	console.AddItem("dw", DeleteWallet, local.Translate("dw_cmd"))
 
 	console.AddItem("vas", ViewAccountStatus, local.Translate("vas_cmd"))
@@ -64,13 +65,12 @@ def Init():
 	console.AddItem("set", SetSettings, local.Translate("set_cmd"))
 	console.AddItem("xrestart", Xrestart, local.Translate("xrestart_cmd"))
 	console.AddItem("xlist", Xlist, local.Translate("xlist_cmd"))
+	console.AddItem("gpk", GetPubKey, local.Translate("gpk_cmd"))
+	console.AddItem("ssoc", SignShardOverlayCert, local.Translate("ssoc_cmd"))
+	console.AddItem("isoc", ImportShardOverlayCert, local.Translate("isoc_cmd"))
 
 	# console.AddItem("test", Test, "Test")
 	# console.AddItem("pt", PrintTest, "PrintTest")
-
-	console.AddItem("hr", GetHashrate, local.Translate("hr_cmd"))
-	console.AddItem("mon", EnableMining, local.Translate("mo_cmd"))
-	console.AddItem("moff", DisableMining, local.Translate("moff_cmd"))
 
 	local.db["config"]["logLevel"] = "debug"
 	local.db["config"]["isLocaldbSaving"] = True
@@ -466,10 +466,16 @@ def CreatNewWallet(args):
 		else:
 			workchain = args[0]
 			walletName = args[1]
+			version = "v1"
+			subwallet = None
+		if len(args) == 3:
+			version = args[2]
+		if len(args) == 4:
+			subwallet = args[3]
 	except:
-		ColorPrint("{red}Bad args. Usage:{endc} nw <workchain-id> <wallet-name>")
+		ColorPrint("{red}Bad args. Usage:{endc} nw <workchain-id> <wallet-name> [<version>]")
 		return
-	wallet = ton.CreateWallet(walletName, workchain)
+	wallet = ton.CreateWallet(walletName, workchain, version, subwallet)
 	table = list()
 	table += [["Name", "Workchain", "Address"]]
 	table += [[wallet.name, wallet.workchain, wallet.addr_init]]
@@ -532,6 +538,40 @@ def ImportWalletFromFile(args):
 	ColorPrint("ImportWalletFromFile - {green}OK{endc}")
 #end define
 
+def ImportWallet(args):
+	try:
+		addr = args[0]
+		key = args[1]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} iw <wallet-addr> <wallet-secret-key>")
+		return
+	name = ton.ImportWallet(addr, key)
+	print("Wallet name:", name)
+#end define
+
+def SetWalletVersion(args):
+	try:
+		addr = args[0]
+		version = args[1]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} swv <wallet-addr> <wallet-version>")
+		return
+	ton.SetWalletVersion(addr, version)
+	ColorPrint("SetWalletVersion - {green}OK{endc}")
+#end define
+
+def ExportWallet(args):
+	try:
+		name = args[0]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} ew <wallet-name>")
+		return
+	addr, key = ton.ExportWallet(name)
+	print("Wallet name:", name)
+	print("Address:", addr)
+	print("Secret key:", key)
+#end define
+
 def SaveWalletAddressToFile(args):
 	try:
 		walletName = args[0]
@@ -566,9 +606,10 @@ def ViewAccountStatus(args):
 		return
 	addr = ton.GetDestinationAddr(addr)
 	account = ton.GetAccount(addr)
+	version = ton.GetWalletVersionFromHash(account.codeHash)
 	statusTable = list()
-	statusTable += [["Address", "Status", "Balance"]]
-	statusTable += [[addr, account.status, account.balance]]
+	statusTable += [["Address", "Status", "Version", "Balance"]]
+	statusTable += [[addr, account.status, version, account.balance]]
 	historyTable = GetHistoryTable(addr, 10)
 	PrintTable(statusTable)
 	print()
@@ -984,39 +1025,25 @@ def Xlist(args):
 	ColorPrint("Xlist - {green}OK{endc}")
 #end define
 
-def GetHashrate(args):
-	ColorPrint("The data may be incorrect if mining is enabled during the test. Turn off mining before checking hashrate.")
-	result = ton.GetHashrate()
-	ColorPrint("Current Hashrate: ")
-	ColorPrint(result)
+def GetPubKey(args):
+	pubkey = ton.GetPubKey(ton.adnlAddr)
+	print("pubkey:", pubkey)
 #end define
 
-def EnableMining(args):
-	powAddr = ton.GetSettings('powAddr')
-	minerAddr = ton.GetSettings('minerAddr')
-
-	if powAddr is None:
-		ColorPrint("{yellow}powAddr is null. Set to auto select{endc}")
-		ton.SetSettings('powAddr', '"auto"')
-	#end if
-
-	if minerAddr is None:
-		ColorPrint("{yellow}minerAddr is null. Creating new address{endc}")
-		data = ton.GetWallets()
-		if (data is None or len(data) == 0):
-			ton.nw()
-			data = ton.GetWallets()
-		ColorPrint("Your miner address is: {addr}".format(addr=data[0].addr))
-		ton.SetSettings('minerAddr', '"'+data[0].addr+'"')
-	#end if
-
-	ColorPrint("Mining was enabled")
+def SignShardOverlayCert(args):
+	try:
+		adnl = args[0]
+		pubkey = args[0]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} ssoc <pubkey>")
+		return
+	ton.SignShardOverlayCert(adnl, pubkey)
 #end define
 
-def DisableMining(args):
-	ton.SetSettings('powAddr', 'null')
-	ColorPrint("Mining was disabled. The shutdown process may take up to 100 seconds.")
+def ImportShardOverlayCert(args):
+	ton.ImportShardOverlayCert()
 #end define
+
 
 ###
 ### Start of the program

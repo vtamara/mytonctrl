@@ -49,14 +49,14 @@ def Init():
 			need = need * -1
 			buff_wallet = wallet
 			buff_wallet.oldseqno = ton.GetSeqno(wallet)
-			ton.MoveGramsFromHW(wallet, [[testsWallet.addr, need]], wait=False)
+			ton.MoveCoinsFromHW(wallet, [[testsWallet.addr, need]], wait=False)
 			Local.AddLog(testsWallet.name + " <<< " + str(wallet.subwallet))
 	if buff_wallet:
 		ton.WaitTransaction(buff_wallet)
 	#end for
 
 	# Move grams from highload wallet
-	ton.MoveGramsFromHW(testsWallet, destList)
+	ton.MoveCoinsFromHW(testsWallet, destList)
 
 	# Activate wallets
 	for wallet in wallets:
@@ -74,7 +74,7 @@ def Work():
 		destList.append([wallets[i].addr, 0.1])
 	for wallet in wallets:
 		wallet.oldseqno = ton.GetSeqno(wallet)
-		ton.MoveGramsFromHW(wallet, destList, wait=False)
+		ton.MoveCoinsFromHW(wallet, destList, wait=False)
 		Local.AddLog(str(wallet.subwallet) + " " + wallet.addr + " >>> ")
 	ton.WaitTransaction(wallets[-1])
 #end define
@@ -97,12 +97,14 @@ Local.db["config"]["logLevel"] = "info"
 Local.Run()
 
 local.db["config"]["logLevel"] = "info"
-load = 10
+load = 100
 
 Local.StartCycle(General, sec=1)
 while True:
 	time.sleep(60)
-	hour_str = time.strftime("%H")
-	hour = int(hour_str)
-	load = hour * 4
+	#hour_str = time.strftime("%H")
+	#hour = int(hour_str)
+	#load = hour * 4
+	#load += 10
+	pass
 #end while

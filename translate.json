@@ -32,8 +32,16 @@
 		"ru": "Показать локальные кошельки"
 	},
 	"iw_cmd": {
-		"en": "Import wallet from file",
-		"ru": "Импортировать кошелек из файла"
+		"en": "Import wallet",
+		"ru": "Импортировать кошелек"
+	},
+	"swv_cmd": {
+		"en": "Set wallet version",
+		"ru": "Установить версию кошелька"
+	},
+	"ex_cmd": {
+		"en": "Export wallet",
+		"ru": "Экспортировать кошелек"
 	},
 	"swa_cmd": {
 		"en": "Save wallet address to file",
