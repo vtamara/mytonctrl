@@ -467,8 +467,8 @@ def CreatNewWallet(args):
 			workchain = args[0]
 			walletName = args[1]
 			version = "v1"
-			subwallet = None
-		if len(args) == 3:
+			subwallet = 0
+		if len(args) > 2:
 			version = args[2]
 		if len(args) == 4:
 			subwallet = args[3]
@@ -500,7 +500,7 @@ def ActivateWallet(args):
 
 def PrintWalletsList(args):
 	table = list()
-	table += [["Name", "Status", "Balance", "Workchain", "Address"]]
+	table += [["Name", "Status", "Balance", "Ver", "Wch", "Address"]]
 	data = ton.GetWallets()
 	if (data is None or len(data) == 0):
 		print("No data")
@@ -509,7 +509,7 @@ def PrintWalletsList(args):
 		account = ton.GetAccount(wallet.addr)
 		if account.status != "active":
 			wallet.addr = wallet.addr_init
-		table += [[wallet.name, account.status, account.balance, wallet.workchain, wallet.addr]]
+		table += [[wallet.name, account.status, account.balance, wallet.version, wallet.workchain, wallet.addr]]
 	PrintTable(table)
 #end define
 

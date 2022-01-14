@@ -20,15 +20,16 @@ class LiteClient:
 	#end define
 
 	def Run(self, cmd, **kwargs):
-		timeout = kwargs.get("timeout", 3)
 		index = kwargs.get("index")
+		timeout = kwargs.get("timeout", 3)
+		useLocalLiteServer = kwargs.get("useLocalLiteServer", True)
 		validatorStatus = self.ton.GetValidatorStatus()
 		validatorOutOfSync = validatorStatus.get("outOfSync")
 		args = [self.appPath, "--global-config", self.configPath, "--verbosity", "0", "--cmd", cmd]
 		if index is not None:
 			index = str(index)
 			args += ["-i", index]
-		elif self.pubkeyPath and validatorOutOfSync < 20:
+		elif useLocalLiteServer and self.pubkeyPath and validatorOutOfSync < 20:
 			args = [self.appPath, "--addr", self.addr, "--pub", self.pubkeyPath, "--verbosity", "0", "--cmd", cmd]
 		else:
 			liteServers = local.db.get("liteServers")
@@ -1472,11 +1473,15 @@ class MyTonCore():
 	def SendFile(self, filePath, wallet=None, **kwargs):
 		local.AddLog("start SendFile function: " + filePath, "debug")
 		wait = kwargs.get("wait", True)
+		duplicateSendfile = local.db.get("duplicateSendfile", True)
 		if not os.path.isfile(filePath):
 			raise Exception("SendFile error: no such file '{filePath}'".format(filePath=filePath))
 		if wait and wallet:
 			wallet.oldseqno = self.GetSeqno(wallet)
-		result = self.liteClient.Run("sendfile " + filePath)
+		self.liteClient.Run("sendfile " + filePath)
+		if duplicateSendfile:
+			self.liteClient.Run("sendfile " + filePath, useLocalLiteServer=False)
+			self.liteClient.Run("sendfile " + filePath, useLocalLiteServer=False)
 		if wait and wallet:
 			self.WaitTransaction(wallet)
 		os.remove(filePath)
@@ -1796,7 +1801,7 @@ class MyTonCore():
 		return walletName
 	#end define
 
-	def WalletsCheckWalletsCheck(self):
+	def WalletsCheck(self):
 		local.AddLog("start WalletsCheck function", "debug")
 		wallets = self.GetWallets()
 		for wallet in wallets:
@@ -1818,7 +1823,7 @@ class MyTonCore():
 		local.AddLog("start MoveCoins function", "debug")
 		flags = kwargs.get("flags")
 		wait = kwargs.get("wait", True)
-		subwallet = kwargs.get("subwallet", 1)
+		subwallet = kwargs.get("subwallet", 0)
 		if coins == "all":
 			mode = 130
 			coins = 0
