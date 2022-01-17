@@ -784,13 +784,12 @@ def PrintOffersList(args):
 #end define
 
 def VoteOffer(args):
-	try:
-		offerHash = args[0]
-		offerHash = int(offerHash)
-	except:
+	if len(args) == 0:
 		ColorPrint("{red}Bad args. Usage:{endc} vo <offer-hash>")
 		return
-	ton.VoteOffer(offerHash)
+	for offerHash in args:
+		offerHash = int(offerHash)
+		ton.VoteOffer(offerHash)
 	ColorPrint("VoteOffer - {green}OK{endc}")
 #end define
 

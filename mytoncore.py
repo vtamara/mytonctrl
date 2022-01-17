@@ -3456,11 +3456,11 @@ def General():
 	ton = MyTonCore()
 
 	# Запустить потоки
-	local.StartCycle(Elections, sec=600, args=(ton, ))
+	local.StartCycle(Elections, sec=60, args=(ton, ))
 	local.StartCycle(Statistics, sec=10, args=(ton, ))
-	local.StartCycle(Offers, sec=600, args=(ton, ))
-	local.StartCycle(Complaints, sec=600, args=(ton, ))
-	local.StartCycle(Slashing, sec=600, args=(ton, ))
+	local.StartCycle(Offers, sec=60, args=(ton, ))
+	local.StartCycle(Complaints, sec=60, args=(ton, ))
+	local.StartCycle(Slashing, sec=60, args=(ton, ))
 	local.StartCycle(Domains, sec=600, args=(ton, ))
 	local.StartCycle(Telemetry, sec=60, args=(ton, ))
 	local.StartCycle(ScanBlocks, sec=1, args=(ton,))
