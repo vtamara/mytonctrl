@@ -2418,12 +2418,19 @@ class MyTonCore():
 		return data
 	#end define
 
-	def GetValidatorsList(self):
-		config34 = self.GetConfig34()
-		electionId = config34.get("startWorkTime")
-		validatorsLoad = self.GetValidatorsLoad()
+	def GetValidatorsList(self, past=False):
+		start = None
+		end = None
+		config = self.GetConfig34()
+		if past:
+			config = self.GetConfig32()
+			start = config.get("startWorkTime")
+			end = config.get("endWorkTime") - 60
+		#end if
+		validatorsLoad = self.GetValidatorsLoad(start, end)
+		validators = config["validators"]
+		electionId = config.get("startWorkTime")
 		saveElectionEntries = self.GetSaveElectionEntries(electionId)
-		validators = config34["validators"]
 		for vid in range(len(validators)):
 			validator = validators[vid]
 			adnlAddr = validator["adnlAddr"]

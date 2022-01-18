@@ -946,7 +946,8 @@ def VoteElectionEntry(args):
 #end define
 
 def PrintValidatorList(args):
-	validators = ton.GetValidatorsList()
+	past = "past" in args
+	validators = ton.GetValidatorsList(past=past)
 	if "--json" in args:
 		text = json.dumps(validators, indent=2)
 		print(text)
