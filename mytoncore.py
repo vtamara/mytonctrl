@@ -173,6 +173,7 @@ class Domain(dict):
 class MyTonCore():
 	def __init__(self):
 		self.walletsDir = None
+		self.contractsDir = None
 		self.adnlAddr = None
 		self.tempDir = None
 		self.validatorWalletName = None
@@ -189,11 +190,13 @@ class MyTonCore():
 	def Init(self):
 		# Check all directorys
 		os.makedirs(self.walletsDir, exist_ok=True)
+		os.makedirs(self.contractsDir, exist_ok=True)
 	#end define
 
 	def Refresh(self):
 		local.dbLoad()
-		self.walletsDir = dir(local.buffer.get("myWorkDir") + "wallets")
+		self.walletsDir = local.buffer.get("myWorkDir") + "wallets/"
+		self.contractsDir = local.buffer.get("myWorkDir") + "contracts/"
 		self.tempDir = local.buffer.get("myTempDir")
 
 		self.adnlAddr = local.db.get("adnlAddr")
@@ -1587,7 +1590,7 @@ class MyTonCore():
 		# Check if we have enough coins
 		balance = account.balance
 		if minStake > stake:
-			text = "You don't have enough coins. Minimum stake: {minStake}".format(minStake=minStake)
+			text = "Stake less than the minimum stake. Minimum stake: {minStake}".format(minStake=minStake)
 			local.AddLog(text, "error")
 			return
 		if stake > balance:
@@ -1698,7 +1701,7 @@ class MyTonCore():
 		return wallet
 	#end define
 
-	def CreateHighWallet(self, name, subwallet=1, workchain=0, version="v1"):
+	def CreateHighWallet(self, name, subwallet=1, workchain=0, version="hv1"):
 		local.AddLog("start CreateHighWallet function", "debug")
 		walletPath = self.walletsDir + name
 		if os.path.isfile(walletPath + ".pk") and os.path.isfile(walletPath + str(subwallet) + ".addr"):
@@ -1710,7 +1713,7 @@ class MyTonCore():
 				raise Exception("CreateHighWallet error")
 			#end if
 		hwallet = self.GetLocalWallet(name, version, subwallet)
-		self.SetWalletVersion(wallet.addr, version)
+		self.SetWalletVersion(hwallet.addr, version)
 		return hwallet
 	#end define
 
@@ -2114,13 +2117,36 @@ class MyTonCore():
 		subprocess.run(args)
 	#end define
 
-	def GetComplaints(self, electionId=None):
-		local.AddLog("start GetComplaints function", "debug")
+	def GetComplaints(self, electionId=None, past=False):
+		# Get buffer
+		timestamp = GetTimestamp()
+		bname = "complaints" + str(past)
+		bname2 = bname + "_time"
+		complaints = local.buffer.get(bname)
+		complaints_time = local.buffer.get(bname2)
+		if complaints:
+			diffTime = timestamp - complaints_time
+			if diffTime < 60:
+				return complaints
+		#end if
+		
+		# Calculate complaints time
 		complaints = dict()
 		fullElectorAddr = self.GetFullElectorAddr()
 		if electionId is None:
 			config32 = self.GetConfig32()
 			electionId = config32.get("startWorkTime")
+			end = config32.get("endWorkTime")
+			buff = end - electionId
+		if past:
+			electionId = electionId - buff
+			saveComplaints = self.GetSaveComplaints()
+			complaints = saveComplaints.get(str(electionId))
+			return complaints
+		#end if
+		
+		# Get raw data
+		local.AddLog("start GetComplaints function", "debug")
 		cmd = "runmethodfull {fullElectorAddr} list_complaints {electionId}".format(fullElectorAddr=fullElectorAddr, electionId=electionId)
 		result = self.liteClient.Run(cmd)
 		rawComplaints = self.Result2List(result)
@@ -2157,7 +2183,8 @@ class MyTonCore():
 			item["paid"] = buff[5] # *paid*
 			suggestedFine = buff[6] # *suggested_fine*
 			item["suggestedFine"] = ng2g(suggestedFine)
-			item["suggestedFinePart"] = buff[7] # *suggested_fine_part*
+			suggestedFinePart = buff[7] # *suggested_fine_part*
+			item["suggestedFinePart"] = suggestedFinePart /256 *100
 			votedValidators = subdata[1] # *voters_list*
 			item["votedValidators"] = votedValidators
 			item["vsetId"] = subdata[2] # *vset_id*
@@ -2173,7 +2200,31 @@ class MyTonCore():
 			item["pseudohash"] = pseudohash
 			complaints[pseudohash] = item
 		#end for
+		
+		# Set buffer
+		local.buffer[bname] = complaints
+		local.buffer[bname2] = timestamp
+
+		# Save complaints
+		if len(complaints) > 0:
+			electionId = str(electionId)
+			saveComplaints = self.GetSaveComplaints()
+			saveComplaints[electionId] = complaints
 		return complaints
+	#end define
+	
+	def GetSaveComplaints(self):
+		timestamp = GetTimestamp()
+		saveComplaints = local.db.get("saveComplaints")
+		if type(saveComplaints) is not dict:
+			saveComplaints = dict()
+			local.db["saveComplaints"] = saveComplaints
+		buff = saveComplaints.copy()
+		for key, item in buff.items():
+			diffTime = timestamp - int(key)
+			if diffTime > 604800:
+				saveComplaints.pop(key)
+		return saveComplaints
 	#end define
 
 	def GetAdnlFromPubkey(self, inputPubkey):
@@ -2190,13 +2241,13 @@ class MyTonCore():
 		local.AddLog("start GetComplaintsNumber function", "debug")
 		result = dict()
 		complaints = self.GetComplaints()
-		saveComplaints = self.GetSaveComplaints()
+		votedComplaints = self.GetVotedComplaints()
 		buff = 0
 		for key, item in complaints.items():
 			pubkey = item.get("pubkey")
 			electionId = item.get("electionId")
 			pseudohash = pubkey + str(electionId)
-			if pseudohash in saveComplaints:
+			if pseudohash in votedComplaints:
 				continue
 			buff += 1
 		result["all"] = len(complaints)
@@ -2271,7 +2322,7 @@ class MyTonCore():
 		resultFilePath = self.SignComplaintVoteRequestWithValidator(complaintHash, electionId, validatorIndex, validatorPubkey_b64, validatorSignature)
 		resultFilePath = self.SignFileWithWallet(wallet, resultFilePath, fullElectorAddr, 1.5)
 		self.SendFile(resultFilePath, wallet)
-		self.AddSaveComplaints(complaint)
+		self.AddVotedComplaints(complaint)
 	#end define
 
 	def SaveComplaints(self, electionId):
@@ -2528,6 +2579,12 @@ class MyTonCore():
 				return efficiency
 		local.AddLog("GetValidatorEfficiency warning: efficiency not found.", "warning")
 	#end define
+	
+	def GetDbUsage(self):
+		path = "/var/ton-work/db"
+		data = psutil.disk_usage(path)
+		return data.percent
+	#end define
 
 	def GetDbSize(self, exceptions="log"):
 		local.AddLog("start GetDbSize function", "debug")
@@ -2733,20 +2790,20 @@ class MyTonCore():
 			local.dbSave()
 	#end define
 
-	def GetSaveComplaints(self):
-		bname = "newSaveComplaints"
-		saveComplaints = local.db.get(bname)
-		if saveComplaints is None:
-			saveComplaints = dict()
-			local.db[bname] = saveComplaints
-		return saveComplaints
+	def GetVotedComplaints(self):
+		bname = "votedComplaints"
+		votedComplaints = local.db.get(bname)
+		if votedComplaints is None:
+			votedComplaints = dict()
+			local.db[bname] = votedComplaints
+		return votedComplaints
 	#end define
 
-	def AddSaveComplaints(self, complaint):
+	def AddVotedComplaints(self, complaint):
 		pseudohash = complaint.get("pseudohash")
-		saveComplaints = self.GetSaveComplaints()
-		if pseudohash not in saveComplaints:
-			saveComplaints[pseudohash] = complaint
+		votedComplaints = self.GetVotedComplaints()
+		if pseudohash not in votedComplaints:
+			votedComplaints[pseudohash] = complaint
 			local.dbSave()
 	#end define
 
@@ -3022,6 +3079,111 @@ class MyTonCore():
 			result.append(walletAddr)
 		return result
 	#end define
+	
+	def GetController(self, name):
+		controllerList = self.GetControllerList()
+		controller = controllerList.get(name)
+		return controller
+	#end define
+	
+	def GetControllerList(self):
+		bname = "controllerList"
+		controllerList = local.db.get(bname)
+		if controllerList is None:
+			controllerList = dict()
+			local.db[bname] = controllerList
+		return controllerList
+	#end define
+	
+	def NewController(self, name, validatorAddr, nominatorAddr, validatorRewardShare=0, validatorCoverAbility=0):
+		local.AddLog("start NewController function", "debug")
+		contractPath = self.contractsDir + "nominator_pool/"
+		if not os.path.isdir(contractPath):
+			self.DownloadContract("https://github.com/EmelyanenkoK/nominator_pool", "v2")
+		#end if
+		
+		controller = dict()
+		fiftPath = contractPath + "scripts/new-controller.fif"
+		filePrefix = contractPath + name
+		args = [fiftPath, validatorAddr, nominatorAddr, validatorRewardShare, validatorCoverAbility, filePrefix]
+		result = self.fift.Run(args)
+		print("result:", result)
+		controller["addr"] = Pars(result, "Controller address = ", ' ')
+		controller["proxy1"] = Pars(result, "Proxy 1 address = ", ' ')
+		controller["proxy2"] = Pars(result, "Proxy 2 address = ", ' ')
+		controller["proxy1Boc"] = Pars(result, "Saved proxy 1 creating query to file ", ')')
+		controller["proxy2Boc"] = Pars(result, "Saved proxy 2 creating query to file ", ')')
+		controller["boc"] = Pars(result, "Saved controller creating query to file ", ')')
+		print("controller:", controller)
+		
+		controllerList = self.GetControllerList()
+		controllerList[name] = controller
+		local.dbSave()
+	#end define
+	
+	def DownloadContract(self, url, branch=None):
+		local.AddLog("start DownloadContract function", "debug")
+		buff = url.split('/')
+		gitPath = self.contractsDir + buff[-1] + '/'
+		
+		args = ["git", "clone", url]
+		process = subprocess.run(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=self.contractsDir, timeout=30)
+		
+		args = ["git", "checkout", branch]
+		process = subprocess.run(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=gitPath, timeout=3)
+		
+		if not os.path.isfile(gitPath + "build.sh"):
+			return
+		os.makedirs(gitPath + "build", exist_ok=True)
+		args = ["bash", "build.sh"]
+		process = subprocess.run(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=gitPath, timeout=30)
+		output = process.stdout.decode("utf-8")
+		err = process.stderr.decode("utf-8")
+		if len(err) > 0:
+			raise Exception(err)
+		#end if
+	#end define
+	
+	def ActivateController(self, name, walletName):
+		wallet = self.GetLocalWallet(walletName)
+		controller = self.GetController(name)
+		
+		self.MoveCoins(wallet, controller["addr"], 1.5, flags=["-n"])
+		self.MoveCoins(wallet, controller["proxy1"], 1.5, flags=["-n"])
+		self.MoveCoins(wallet, controller["proxy2"], 1.5, flags=["-n"])
+		self.SendFile(controller["boc"])
+		self.SendFile(controller["proxy1Boc"])
+		self.SendFile(controller["proxy2Boc"])
+	#end define
+	
+	def GetControllerData(self, controller):
+		local.AddLog("start GetControllerData function", "debug")
+		addr = controller.get("addr")
+		account = self.GetAccount(addr)
+		if account.status != "active":
+			return
+		cmd = "runmethod {addr} get_pool_data".format(addr=addr)
+		result = self.liteClient.Run(cmd)
+		data = self.Result2List(result)
+		result = dict()
+		result["vwc"] = data[0]
+		result["vaddr_hash"] = data[1]
+		result["nwc"] = data[2]
+		result["naddr_hash"] = data[3]
+		result["val_balance"] = data[4]
+		result["nom_balance"] = data[5]
+		result["val_request"] = data[6]
+		result["nom_request"] = data[7]
+		result["validator_reward_share"] = data[8]
+		result["validator_cover_ability"] = data[9]
+		controller["data"] = result
+	#end define
+	
+	def AddToController(self, walletName, destAddr, amount):
+		wallet = self.GetLocalWallet(walletName)
+		bocPath = self.contractsDir + "nominator_pool/scripts/add-stake.boc"
+		self.MoveCoins(wallet, destAddr, amount, flags=["-B", bocPath])
+	#end define
 #end class
 
 def ng2g(ng):
@@ -3037,19 +3199,13 @@ def Init():
 	#end if
 
 	local.Run()
-	local.buffer["network"] = dict()
-	local.buffer["network"]["type"] = "bytes"
-	local.buffer["network"]["in"] = [0]*15*6
-	local.buffer["network"]["out"] = [0]*15*6
-	local.buffer["network"]["all"] = [0]*15*6
-
 	local.buffer["oldBlock"] = None
 	local.buffer["blocks"] = list()
 	local.buffer["transNum"] = 0
 	local.buffer["blocksNum"] = 0
 	local.buffer["masterBlocksNum"] = 0
 	local.buffer["transNumList"] = [0]*15*6
-
+	local.buffer["network"] = [None]*15*6
 	local.buffer["diskio"] = [None]*15*6
 #end define
 
@@ -3091,7 +3247,7 @@ def Elections(ton):
 
 def Statistics(ton):
 	ReadNetworkData()
-	SaveNetworStatistics()
+	SaveNetworkStatistics()
 	ReadTransNumData()
 	SaveTransNumStatistics()
 	ReadDiskData()
@@ -3109,6 +3265,8 @@ def ReadDiskData():
 		data[name]["busyTime"] = buff[name].busy_time
 		data[name]["readBytes"] = buff[name].read_bytes
 		data[name]["writeBytes"] = buff[name].write_bytes
+		data[name]["readCount"] = buff[name].read_count
+		data[name]["writeCount"] = buff[name].write_count
 	#end for
 
 	local.buffer["diskio"].pop(0)
@@ -3130,98 +3288,121 @@ def SaveDiskStatistics():
 
 	disksLoadAvg = dict()
 	disksLoadPercentAvg = dict()
+	iopsAvg = dict()
 	disks = GetDisksList()
 	for name in disks:
 		if zerodata[name]["busyTime"] == 0:
 			continue
-		diskLoad1, diskLoadPercent1 = CalculateDiskStatistics(zerodata, buff1, name)
-		diskLoad5, diskLoadPercent5 = CalculateDiskStatistics(zerodata, buff5, name)
-		diskLoad15, diskLoadPercent15 = CalculateDiskStatistics(zerodata, buff15, name)
+		diskLoad1, diskLoadPercent1, iops1 = CalculateDiskStatistics(zerodata, buff1, name)
+		diskLoad5, diskLoadPercent5, iops5 = CalculateDiskStatistics(zerodata, buff5, name)
+		diskLoad15, diskLoadPercent15, iops15 = CalculateDiskStatistics(zerodata, buff15, name)
 		disksLoadAvg[name] = [diskLoad1, diskLoad5, diskLoad15]
 		disksLoadPercentAvg[name] = [diskLoadPercent1, diskLoadPercent5, diskLoadPercent15]
+		iopsAvg[name] = [iops1, iops5, iops15]
 	#end fore
 
 	# save statistics
 	statistics = local.db.get("statistics", dict())
 	statistics["disksLoadAvg"] = disksLoadAvg
 	statistics["disksLoadPercentAvg"] = disksLoadPercentAvg
+	statistics["iopsAvg"] = iopsAvg
 	local.db["statistics"] = statistics
 #end define
 
 def CalculateDiskStatistics(zerodata, data, name):
 	if data is None:
-		return None, None
+		return None, None, None
 	data = data[name]
 	zerodata = zerodata[name]
 	timeDiff = zerodata["timestamp"] - data["timestamp"]
 	busyTimeDiff = zerodata["busyTime"] - data["busyTime"]
 	diskReadDiff = zerodata["readBytes"] - data["readBytes"]
 	diskWriteDiff = zerodata["writeBytes"] - data["writeBytes"]
+	diskReadCountDiff = zerodata["readCount"] - data["readCount"]
+	diskWriteCountDiff = zerodata["writeCount"] - data["writeCount"]
 	diskLoadPercent = busyTimeDiff /1000 /timeDiff *100 # /1000 - to second, *100 - to percent
 	diskLoadPercent = round(diskLoadPercent, 2)
 	diskRead = diskReadDiff /timeDiff
 	diskWrite = diskWriteDiff /timeDiff
+	diskReadCount = diskReadCountDiff /timeDiff
+	diskWriteCount = diskWriteCountDiff /timeDiff
 	diskLoad = b2mb(diskRead + diskWrite)
-	return diskLoad, diskLoadPercent
+	iops = round(diskReadCount + diskWriteCount, 2)
+	return diskLoad, diskLoadPercent, iops
 #end define
 
 def GetDisksList():
-	data = os.listdir("/sys/block/")
+	data = list()
+	buff = os.listdir("/sys/block/")
+	for item in buff:
+		if "loop" in item:
+			continue
+		data.append(item)
+	#end for
 	data.sort()
 	return data
 #end define
 
 def ReadNetworkData():
+	timestamp = GetTimestamp()
 	interfaceName = GetInternetInterfaceName()
 	buff = psutil.net_io_counters(pernic=True)
-	data = buff[interfaceName]
-	network_in = data.bytes_recv
-	network_out = data.bytes_sent
-	network_all = network_in + network_out
+	buff = buff[interfaceName]
+	data = dict()
+	data = dict()
+	data["timestamp"] = timestamp
+	data["bytesRecv"] = buff.bytes_recv
+	data["bytesSent"] = buff.bytes_sent
+	data["packetsSent"] = buff.packets_sent
+	data["packetsRecv"] = buff.packets_recv
 
-	local.buffer["network"]["in"].pop(0)
-	local.buffer["network"]["in"].append(network_in)
-	local.buffer["network"]["out"].pop(0)
-	local.buffer["network"]["out"].append(network_out)
-	local.buffer["network"]["all"].pop(0)
-	local.buffer["network"]["all"].append(network_all)
+	local.buffer["network"].pop(0)
+	local.buffer["network"].append(data)
 #end define
 
-def SaveNetworStatistics():
-	data = local.buffer["network"]["all"]
+def SaveNetworkStatistics():
+	data = local.buffer["network"]
 	data = data[::-1]
 	zerodata = data[0]
 	buff1 = data[1*6-1]
 	buff5 = data[5*6-1]
 	buff15 = data[15*6-1]
+	if buff5 is None:
+		buff5 = buff1
+	if buff15 is None:
+		buff15 = buff5
+	#end if
 
-	# get avg
-	if buff1 != 0:
-		buff1 = zerodata - buff1
-	if buff5 != 0:
-		buff5 = zerodata - buff5
-	if buff15 != 0:
-		buff15 = zerodata - buff15
-
-	# bytes -> bytes/s
-	buff1 = buff1 / (1*60)
-	buff5 = buff5 / (5*60)
-	buff15 = buff15 / (15*60)
-
-	# bytes/s -> bits/s
-	buff1 = buff1 * 8
-	buff5 = buff5 * 8
-	buff15 = buff15 * 8
-
-	# bits/s -> Mbits/s
-	netLoad1 = b2mb(buff1)
-	netLoad5 = b2mb(buff5)
-	netLoad15 = b2mb(buff15)
+	netLoadAvg = dict()
+	ppsAvg = dict()
+	networkLoadAvg1, ppsAvg1 = CalculateNetworkStatistics(zerodata, buff1)
+	networkLoadAvg5, ppsAvg5 = CalculateNetworkStatistics(zerodata, buff5)
+	networkLoadAvg15, ppsAvg15 = CalculateNetworkStatistics(zerodata, buff15)
+	netLoadAvg = [networkLoadAvg1, networkLoadAvg5, networkLoadAvg15]
+	ppsAvg = [ppsAvg1, ppsAvg5, ppsAvg15]
 
 	# save statistics
 	statistics = local.db.get("statistics", dict())
-	statistics["netLoadAvg"] = [netLoad1, netLoad5, netLoad15]
+	statistics["netLoadAvg"] = netLoadAvg
+	statistics["ppsAvg"] = ppsAvg
 	local.db["statistics"] = statistics
+#end define
+
+def CalculateNetworkStatistics(zerodata, data):
+	if data is None:
+		return None, None
+	timeDiff = zerodata["timestamp"] - data["timestamp"]
+	bytesRecvDiff = zerodata["bytesRecv"] - data["bytesRecv"]
+	bytesSentDiff = zerodata["bytesSent"] - data["bytesSent"]
+	packetsRecvDiff = zerodata["packetsRecv"] - data["packetsRecv"]
+	packetsSentDiff = zerodata["packetsSent"] - data["packetsSent"]
+	bitesRecvAvg = bytesRecvDiff /timeDiff *8 
+	bitesSentAvg = bytesSentDiff /timeDiff *8 
+	packetsRecvAvg = packetsRecvDiff /timeDiff
+	packetsSentAvg = packetsSentDiff /timeDiff
+	netLoadAvg = b2mb(bitesRecvAvg + bitesSentAvg)
+	ppsAvg = round(packetsRecvAvg + packetsSentAvg, 2)
+	return netLoadAvg, ppsAvg
 #end define
 
 def ReadTransNumData():
@@ -3283,6 +3464,30 @@ def Domains(ton):
 	pass
 #end define
 
+def GetUname():
+	data = os.uname()
+	result = dict(zip('sysname nodename release version machine'.split(), data))
+	return result
+#end define
+
+def GetMemoryInfo():
+	result = dict()
+	data = psutil.virtual_memory()
+	result["total"] = round(data.total / 10**9, 2)
+	result["usage"] = round(data.used / 10**9, 2)
+	result["usagePercent"] = data.percent
+	return result
+#end define
+
+def GetSwapInfo():
+	result = dict()
+	data = psutil.swap_memory()
+	result["total"] = round(data.total / 10**9, 2)
+	result["usage"] = round(data.used / 10**9, 2)
+	result["usagePercent"] = data.percent
+	return result
+#end define
+
 def Telemetry(ton):
 	sendTelemetry = local.db.get("sendTelemetry")
 	if sendTelemetry is not True:
@@ -3299,7 +3504,14 @@ def Telemetry(ton):
 	data["tps"] = ton.GetStatistics("tpsAvg")
 	data["disksLoad"] = ton.GetStatistics("disksLoadAvg")
 	data["disksLoadPercent"] = ton.GetStatistics("disksLoadPercentAvg")
+	data["iops"] = ton.GetStatistics("iopsAvg")
+	data["pps"] = ton.GetStatistics("ppsAvg")
+	data["dbUsage"] = ton.GetDbUsage()
+	data["memory"] = GetMemoryInfo()
+	data["swap"] = GetSwapInfo()
+	data["uname"] = GetUname()
 	elections = local.TryFunction(ton.GetElectionEntries)
+	complaints = local.TryFunction(ton.GetComplaints)
 
 	# Get git hashes
 	gitHashes = dict()
@@ -3327,6 +3539,7 @@ def Telemetry(ton):
 	data["currentValidators"] = ton.GetValidatorsList()
 	data["nextValidators"] = config36.get("validators")
 	data["elections"] = elections
+	data["complaints"] = complaints
 
 	output = json.dumps(data)
 	resp = requests.post(fullUrl, data=output, timeout=3)
@@ -3463,11 +3676,11 @@ def General():
 	ton = MyTonCore()
 
 	# Запустить потоки
-	local.StartCycle(Elections, sec=60, args=(ton, ))
+	local.StartCycle(Elections, sec=600, args=(ton, ))
 	local.StartCycle(Statistics, sec=10, args=(ton, ))
-	local.StartCycle(Offers, sec=60, args=(ton, ))
-	local.StartCycle(Complaints, sec=60, args=(ton, ))
-	local.StartCycle(Slashing, sec=60, args=(ton, ))
+	local.StartCycle(Offers, sec=600, args=(ton, ))
+	local.StartCycle(Complaints, sec=600, args=(ton, ))
+	local.StartCycle(Slashing, sec=600, args=(ton, ))
 	local.StartCycle(Domains, sec=600, args=(ton, ))
 	local.StartCycle(Telemetry, sec=60, args=(ton, ))
 	local.StartCycle(ScanBlocks, sec=1, args=(ton,))

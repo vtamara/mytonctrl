@@ -207,6 +207,14 @@
 		"en": "Load average[{0}]: {1}, {2}, {3}",
 		"ru": "Средняя нагрузка[{0}]: {1}, {2}, {3}"
 	},
+	"local_status_memory_load": {
+		"en": "Memory load: {0}, {1}",
+		"ru": "Загрузка памяти: {0}, {1}"
+	},
+	"local_status_swap_load": {
+		"en": "Swap load: {0}, {1}",
+		"ru": "Загрузка подкачки: {0}, {1}"
+	},
 	"local_status_net_load": {
 		"en": "Network load average (Mbit/s): {0}, {1}, {2}",
 		"ru": "Средняя нагрузка сети (Mbit/s): {0}, {1}, {2}"
@@ -227,9 +235,9 @@
 		"en": "Local validator out of sync: {0}",
 		"ru": "Рассинхронизация локального валидатора: {0}"
 	},
-	"local_status_db_size": {
-		"en": "Local validator database size: {0}",
-		"ru": "Размер БД локального валидатора: {0}"
+	"local_status_db": {
+		"en": "Local validator database size: {0}, {1}",
+		"ru": "Размер БД локального валидатора: {0}, {1}"
 	},
 	"ton_config_head": {
 		"en": "{cyan}===[ TON network configuration ]==={endc}",

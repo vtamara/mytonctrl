@@ -60,7 +60,6 @@ def Init():
 	console.AddItem("cl", PrintComplaintsList, local.Translate("cl_cmd"))
 	console.AddItem("vc", VoteComplaint, local.Translate("vc_cmd"))
 
-
 	console.AddItem("get", GetSettings, local.Translate("get_cmd"))
 	console.AddItem("set", SetSettings, local.Translate("set_cmd"))
 	console.AddItem("xrestart", Xrestart, local.Translate("xrestart_cmd"))
@@ -68,9 +67,15 @@ def Init():
 	console.AddItem("gpk", GetPubKey, local.Translate("gpk_cmd"))
 	console.AddItem("ssoc", SignShardOverlayCert, local.Translate("ssoc_cmd"))
 	console.AddItem("isoc", ImportShardOverlayCert, local.Translate("isoc_cmd"))
+	
+	console.AddItem("new_controller", NewController, local.Translate("new_controller_cmd"))
+	console.AddItem("controller_list", ControllerList, local.Translate("controller_list_cmd"))
+	console.AddItem("activate_controller", ActivateController, local.Translate("activate_controller_cmd"))
+	console.AddItem("add_to_controller", AddToController, local.Translate("add_to_controller_cmd"))
 
 	# console.AddItem("test", Test, "Test")
 	# console.AddItem("pt", PrintTest, "PrintTest")
+	console.AddItem("sl", sl, "sl")
 
 	local.db["config"]["logLevel"] = "debug"
 	local.db["config"]["isLocaldbSaving"] = True
@@ -144,6 +149,10 @@ def PrintTest(args):
 	print(json.dumps(local.buffer, indent=2))
 #end define
 
+def sl(args):
+	Slashing(ton)
+#end define
+
 def Test(args):
 	start = "kf8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIue"
 	ok_arr = list()
@@ -212,6 +221,9 @@ def PrintStatus(args):
 	validatorIndex = ton.GetValidatorIndex()
 	validatorWallet = ton.GetLocalWallet(ton.validatorWalletName)
 	dbSize = ton.GetDbSize()
+	dbUsage = ton.GetDbUsage()
+	memoryInfo = GetMemoryInfo()
+	swapInfo = GetSwapInfo()
 	offersNumber = ton.GetOffersNumber()
 	complaintsNumber = ton.GetComplaintsNumber()
 	statistics = ton.GetSettings("statistics")
@@ -224,7 +236,7 @@ def PrintStatus(args):
 	else:
 		validatorAccount = None
 	PrintTonStatus(startWorkTime, totalValidators, onlineValidators, shardsNumber, offersNumber, complaintsNumber, tpsAvg)
-	PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, netLoadAvg, disksLoadAvg, disksLoadPercentAvg)
+	PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, dbUsage, memoryInfo, swapInfo, netLoadAvg, disksLoadAvg, disksLoadPercentAvg)
 	PrintTonConfig(fullConfigAddr, fullElectorAddr, config15, config17)
 	PrintTimes(rootWorkchainEnabledTime_int, startWorkTime, oldStartWorkTime, config15)
 #end define
@@ -269,7 +281,7 @@ def PrintTonStatus(startWorkTime, totalValidators, onlineValidators, shardsNumbe
 	print()
 #end define
 
-def PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, netLoadAvg, disksLoadAvg, disksLoadPercentAvg):
+def PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, dbUsage, memoryInfo, swapInfo, netLoadAvg, disksLoadAvg, disksLoadPercentAvg):
 	if validatorWallet is None:
 		return
 	adnlAddr = ton.adnlAddr
@@ -301,6 +313,18 @@ def PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, valid
 	cpuLoad5_text = GetColorInt(cpuLoad5, cpuNumber, logic="less")
 	cpuLoad15_text = GetColorInt(cpuLoad15, cpuNumber, logic="less")
 	cpuLoad_text = local.Translate("local_status_cpu_load").format(cpuNumber_text, cpuLoad1_text, cpuLoad5_text, cpuLoad15_text)
+	
+	# Memory status
+	memoryUsage = memoryInfo.get("usage")
+	memoryUsagePercent = memoryInfo.get("usagePercent")
+	swapUsage = swapInfo.get("usage")
+	swapUsagePercent = swapInfo.get("usagePercent")
+	memoryUsage_text = GetColorInt(memoryUsage, 100, logic="less", ending=" Gb")
+	memoryUsagePercent_text = GetColorInt(memoryUsagePercent, 90, logic="less", ending="%")
+	swapUsage_text = GetColorInt(swapUsage, 100, logic="less", ending=" Gb")
+	swapUsagePercent_text = GetColorInt(swapUsagePercent, 90, logic="less", ending="%")
+	memory_text = local.Translate("local_status_memory_load").format(memoryUsage_text, memoryUsagePercent_text)
+	swap_text = local.Translate("local_status_swap_load").format(swapUsage_text, swapUsagePercent_text)
 
 	# Network status
 	netLoad1_text = GetColorInt(netLoad1, 300, logic="less")
@@ -328,7 +352,9 @@ def PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, valid
 	mytoncoreStatus_text = local.Translate("local_status_mytoncore_status").format(GetColorStatus(mytoncoreStatus_bool))
 	validatorStatus_text = local.Translate("local_status_validator_status").format(GetColorStatus(validatorStatus_bool))
 	validatorOutOfSync_text = local.Translate("local_status_validator_out_of_sync").format(GetColorInt(validatorOutOfSync, 20, logic="less", ending=" s"))
-	dbSize_text = local.Translate("local_status_db_size").format(GetColorInt(dbSize, 1000, logic="less", ending=" Gb"))
+	dbSize_text = GetColorInt(dbSize, 1000, logic="less", ending=" Gb")
+	dbUsage_text = GetColorInt(dbUsage, 80, logic="less", ending="%")
+	dbStatus_text = local.Translate("local_status_db").format(dbSize_text, dbUsage_text, cyan=bcolors.cyan, endc=bcolors.endc)
 
 	ColorPrint(local.Translate("local_status_head"))
 	print(validatorIndex_text)
@@ -342,7 +368,9 @@ def PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, valid
 	print(mytoncoreStatus_text)
 	print(validatorStatus_text)
 	print(validatorOutOfSync_text)
-	print(dbSize_text)
+	print(dbStatus_text)
+	print(memory_text)
+	print(swap_text)
 	print()
 #end define
 
@@ -459,6 +487,8 @@ def Seqno(args):
 #end define
 
 def CreatNewWallet(args):
+	version = "v1"
+	subwallet = 0
 	try:
 		if len(args) == 0:
 			walletName = ton.GenerateWalletName()
@@ -466,8 +496,6 @@ def CreatNewWallet(args):
 		else:
 			workchain = args[0]
 			walletName = args[1]
-			version = "v1"
-			subwallet = 0
 		if len(args) > 2:
 			version = args[2]
 		if len(args) == 4:
@@ -816,7 +844,8 @@ def GetConfig(args):
 #end define
 
 def PrintComplaintsList(args):
-	complaints = ton.GetComplaints()
+	past = "past" in args
+	complaints = ton.GetComplaints(past=past)
 	if "--json" in args:
 		text = json.dumps(complaints, indent=2)
 		print(text)
@@ -1042,6 +1071,50 @@ def SignShardOverlayCert(args):
 
 def ImportShardOverlayCert(args):
 	ton.ImportShardOverlayCert()
+#end define
+
+def NewController(args):
+	try:
+		name = args[0]
+		validatorAddr = args[1]
+		nominatorAddr = args[2]
+		validatorRewardShare = args[3]
+		validatorCoverAbility = args[4]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} new_controller <controller-name> <validator-addr> <nominator-addr> <reward-share> <cover-ability>")
+		return
+	ton.NewController(name, validatorAddr, nominatorAddr, validatorRewardShare, validatorCoverAbility)
+	ColorPrint("NewController - {green}OK{endc}")
+#end define
+
+def ControllerList(args):
+	controllerList = ton.GetControllerList()
+	for name, controller in controllerList.items():
+		ton.GetControllerData(controller)
+	print(json.dumps(controllerList, indent=2))
+#end define
+
+def ActivateController(args):
+	try:
+		name = args[0]
+		walletName = args[1]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} activate_controller <controller-name> <wallet-name>")
+		return
+	ton.ActivateController(name, walletName)
+	ColorPrint("ActivateController - {green}OK{endc}")
+#end define
+
+def AddToController(args):
+	try:
+		walletName = args[0]
+		destAddr = args[1]
+		amount = args[2]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} activate_controller <wallet-name> <controller-addr> <amount>")
+		return
+	ton.AddToController(walletName, destAddr, amount)
+	ColorPrint("AddToController - {green}OK{endc}")
 #end define
 
 
