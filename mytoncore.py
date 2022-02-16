@@ -3467,6 +3467,7 @@ def Domains(ton):
 def GetUname():
 	data = os.uname()
 	result = dict(zip('sysname nodename release version machine'.split(), data))
+	result.pop("nodename")
 	return result
 #end define
 
