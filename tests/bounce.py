@@ -5,7 +5,6 @@ from sys import path
 path.append("/usr/src/mytonctrl/")
 from mytoncore import *
 
-
 Local = MyPyClass(__file__)
 ton = MyTonCore()
 

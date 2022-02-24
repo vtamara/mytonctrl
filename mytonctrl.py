@@ -68,14 +68,12 @@ def Init():
 	console.AddItem("ssoc", SignShardOverlayCert, local.Translate("ssoc_cmd"))
 	console.AddItem("isoc", ImportShardOverlayCert, local.Translate("isoc_cmd"))
 	
-	console.AddItem("new_controller", NewController, local.Translate("new_controller_cmd"))
-	console.AddItem("controller_list", ControllerList, local.Translate("controller_list_cmd"))
-	console.AddItem("activate_controller", ActivateController, local.Translate("activate_controller_cmd"))
-	console.AddItem("add_to_controller", AddToController, local.Translate("add_to_controller_cmd"))
+	console.AddItem("new_nomination_controller", NewNominationController, local.Translate("new_controller_cmd"))
+	console.AddItem("new_restricted_wallet", NewRestrictedWallet, local.Translate("new_restricted_wallet_cmd"))
 
 	# console.AddItem("test", Test, "Test")
 	# console.AddItem("pt", PrintTest, "PrintTest")
-	console.AddItem("sl", sl, "sl")
+	# console.AddItem("sl", sl, "sl")
 
 	local.db["config"]["logLevel"] = "debug"
 	local.db["config"]["isLocaldbSaving"] = True
@@ -197,6 +195,7 @@ def PrintStatus(args):
 	opt = None
 	if len(args) == 1:
 		opt = args[0]
+	adnlAddr = ton.GetAdnlAddr()
 	rootWorkchainEnabledTime_int = ton.GetRootWorkchainEnabledTime()
 	config34 = ton.GetConfig34()
 	config36 = ton.GetConfig36()
@@ -219,7 +218,7 @@ def PrintStatus(args):
 	fullElectorAddr = ton.GetFullElectorAddr()
 	startWorkTime = ton.GetActiveElectionId(fullElectorAddr)
 	validatorIndex = ton.GetValidatorIndex()
-	validatorWallet = ton.GetLocalWallet(ton.validatorWalletName)
+	validatorWallet = ton.GetValidatorWallet()
 	dbSize = ton.GetDbSize()
 	dbUsage = ton.GetDbUsage()
 	memoryInfo = GetMemoryInfo()
@@ -236,7 +235,7 @@ def PrintStatus(args):
 	else:
 		validatorAccount = None
 	PrintTonStatus(startWorkTime, totalValidators, onlineValidators, shardsNumber, offersNumber, complaintsNumber, tpsAvg)
-	PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, dbUsage, memoryInfo, swapInfo, netLoadAvg, disksLoadAvg, disksLoadPercentAvg)
+	PrintLocalStatus(adnlAddr, validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, dbUsage, memoryInfo, swapInfo, netLoadAvg, disksLoadAvg, disksLoadPercentAvg)
 	PrintTonConfig(fullConfigAddr, fullElectorAddr, config15, config17)
 	PrintTimes(rootWorkchainEnabledTime_int, startWorkTime, oldStartWorkTime, config15)
 #end define
@@ -281,10 +280,9 @@ def PrintTonStatus(startWorkTime, totalValidators, onlineValidators, shardsNumbe
 	print()
 #end define
 
-def PrintLocalStatus(validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, dbUsage, memoryInfo, swapInfo, netLoadAvg, disksLoadAvg, disksLoadPercentAvg):
+def PrintLocalStatus(adnlAddr, validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, dbUsage, memoryInfo, swapInfo, netLoadAvg, disksLoadAvg, disksLoadPercentAvg):
 	if validatorWallet is None:
 		return
-	adnlAddr = ton.adnlAddr
 	walletAddr = validatorWallet.addr
 	walletBalance = validatorAccount.balance
 	cpuNumber = psutil.cpu_count()
@@ -967,8 +965,6 @@ def PrintElectionEntriesList(args):
 #end define
 
 def VoteElectionEntry(args):
-	if ton.validatorWalletName is None:
-		ColorPrint("{red}You are not a validator, or this utility is not configured correctly.{endc}")
 	ton.ReturnStake()
 	ton.ElectionEntry()
 	ColorPrint("VoteElectionEntry - {green}OK{endc}")
@@ -1073,48 +1069,32 @@ def ImportShardOverlayCert(args):
 	ton.ImportShardOverlayCert()
 #end define
 
-def NewController(args):
+def NewNominationController(args):
 	try:
 		name = args[0]
-		validatorAddr = args[1]
-		nominatorAddr = args[2]
-		validatorRewardShare = args[3]
-		validatorCoverAbility = args[4]
+		nominatorAddr = args[1]
+		rewardShare = args[2]
+		coverAbility = args[3]
+		workchain = 0
+		subwallet = 0
 	except:
-		ColorPrint("{red}Bad args. Usage:{endc} new_controller <controller-name> <validator-addr> <nominator-addr> <reward-share> <cover-ability>")
+		ColorPrint("{red}Bad args. Usage:{endc} new_controller <controller-name> <nominator-addr> <reward-share> <cover-ability>")
 		return
-	ton.NewController(name, validatorAddr, nominatorAddr, validatorRewardShare, validatorCoverAbility)
-	ColorPrint("NewController - {green}OK{endc}")
+	ton.CreateNominationController(name, nominatorAddr, workchain, subwallet, rewardShare, coverAbility)
+	ColorPrint("NewNominationController - {green}OK{endc}")
 #end define
 
-def ControllerList(args):
-	controllerList = ton.GetControllerList()
-	for name, controller in controllerList.items():
-		ton.GetControllerData(controller)
-	print(json.dumps(controllerList, indent=2))
-#end define
-
-def ActivateController(args):
+def NewRestrictedWallet(args):
 	try:
-		name = args[0]
-		walletName = args[1]
+		workchain = args[0]
+		name = args[1]
+		ownerAddr = args[2]
+		subwallet = 0
 	except:
-		ColorPrint("{red}Bad args. Usage:{endc} activate_controller <controller-name> <wallet-name>")
+		ColorPrint("{red}Bad args. Usage:{endc} new_restricted_wallet <workchain-id> <wallet-name> <owner-addr>")
 		return
-	ton.ActivateController(name, walletName)
-	ColorPrint("ActivateController - {green}OK{endc}")
-#end define
-
-def AddToController(args):
-	try:
-		walletName = args[0]
-		destAddr = args[1]
-		amount = args[2]
-	except:
-		ColorPrint("{red}Bad args. Usage:{endc} activate_controller <wallet-name> <controller-addr> <amount>")
-		return
-	ton.AddToController(walletName, destAddr, amount)
-	ColorPrint("AddToController - {green}OK{endc}")
+	ton.CreateRestrictedWallet(name, ownerAddr, workchain, subwallet)
+	ColorPrint("NewRestrictedWallet - {green}OK{endc}")
 #end define
 
 
