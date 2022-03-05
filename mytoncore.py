@@ -844,16 +844,19 @@ class MyTonCore():
 		#result = self.liteClient.Run(cmd)
 		#seqno =  Pars(result, "prev_key_block_seqno=", '\n')
 		statesDir = "/var/ton-work/db/archive/states"
-		files = os.listdir(statesDir)
-		files.sort(reverse=True)
+		os.chdir(statesDir)
+		files = filter(os.path.isfile, os.listdir(statesDir))
+		files = [os.path.join(statesDir, f) for f in files] # add path to each file
+		files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
 		for fileName in files:
 			buff = fileName.split('_')
 			seqno = int(buff[1])
 			workchain = int(buff[2])
+			if workchain != -1:
+				continue
 			shardchain = int(buff[3])
-			if workchain == -1:
-				data = self.GetBlockHead(workchain, shardchain, seqno)
-				return data
+			data = self.GetBlockHead(workchain, shardchain, seqno)
+			return data
 	#end define
 	
 	def GetInitBlock(self):
@@ -3151,6 +3154,20 @@ class MyTonCore():
 		version = "v3r3"
 		wallet = self.GetLocalWallet(name, version)
 		self.SetWalletVersion(wallet.addr, version)
+	#end define
+	
+	def AddToNominationController(self, walletName, destAddr, amount):
+		wallet = self.GetLocalWallet(walletName)
+		bocPath = self.contractsDir + "nomination-contract/scripts/add-stake.boc"
+		resultFilePath = self.SignBocWithWallet(wallet, bocPath, destAddr, amount)
+		self.SendFile(resultFilePath, wallet)
+	#end define
+	
+	def RequestFromNominationController(self, walletName, destAddr):
+		wallet = self.GetLocalWallet(walletName)
+		bocPath = self.contractsDir + "nomination-contract/scripts/request-stake.boc"
+		resultFilePath = self.SignBocWithWallet(wallet, bocPath, destAddr, 1)
+		self.SendFile(resultFilePath, wallet)
 	#end define
 	
 	def CreateRestrictedWallet(self, name, ownerAddr, workchain=0, subwallet=0):

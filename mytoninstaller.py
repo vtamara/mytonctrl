@@ -213,6 +213,15 @@ def General():
 	if "-m" in sys.argv:
 		mx = sys.argv.index("-m")
 		mode = sys.argv[mx+1]
+	if "-t" in sys.argv:
+		mx = sys.argv.index("-t")
+		telemetry = sys.argv[mx+1]
+		local.buffer["telemetry"] = Str2Bool(telemetry)
+	if "-d" in sys.argv:
+		mx = sys.argv.index("-d")
+		dump = sys.argv[mx+1]
+		local.buffer["dump"] = Str2Bool(dump)
+	#end if
 	
 		# Создать настройки для mytoncore.py
 		FirstMytoncoreSettings()
@@ -228,6 +237,12 @@ def General():
 		# Создать символические ссылки
 		CreateSymlinks()
 	#end if
+#end define
+
+def Str2Bool(str):
+	if str == "true":
+		return True
+	return False
 #end define
 
 def FirstNodeSettings():
@@ -280,6 +295,9 @@ def FirstNodeSettings():
 	local.AddLog("First start validator - create config.json", "debug")
 	args = [validatorAppPath, "--global-config", globalConfigPath, "--db", tonDbDir, "--ip", addr, "--logname", tonLogPath]
 	subprocess.run(args)
+	
+	# Скачать дамп
+	DownloadDump()
 
 	# chown 1
 	local.AddLog("Chown ton-work dir", "debug")
@@ -288,6 +306,31 @@ def FirstNodeSettings():
 
 	# start validator
 	StartValidator()
+#end define
+
+def DownloadDump():
+	dump = local.buffer["dump"]
+	if dump == False:
+		return
+	#end if
+	
+	local.AddLog("start DownloadDump fuction", "debug")
+	url = "https://bakery.ton.swisscops.com"
+	dumpSize = GetRequest(url + "/dumps/latest.size.txt")
+	print("dumpSize:", dumpSize)
+	needSpace = dumpSize * 3
+	diskSpace = psutil.disk_usage("/var")
+	if needSpace < diskSpace.free:
+		return
+	#end if
+	
+	# apt install
+	cmd = "apt install plzip pv"
+	os.system(cmd)
+	
+	# download dump
+	cmd = "curl -s {url}/dumps/latest.tar.lz | pv | plzip -d -n8 | tar -xC /var/ton-work/db".format(url=url)
+	os.system(cmd)
 #end define
 
 def FirstMytoncoreSettings():
@@ -349,11 +392,7 @@ def FirstMytoncoreSettings():
 	mconfig["miner"] = miner
 
 	# Telemetry
-	if ("--no_send_telemetry" in sys.argv):
-		sendTelemetry = False
-	else:
-		sendTelemetry = True
-	mconfig["sendTelemetry"] = sendTelemetry
+	mconfig["sendTelemetry"] = local.buffer["telemetry"]
 
 	# Записать настройки в файл
 	SetConfig(path=mconfigPath, data=mconfig)

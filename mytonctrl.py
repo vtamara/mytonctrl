@@ -69,7 +69,9 @@ def Init():
 	console.AddItem("isoc", ImportShardOverlayCert, local.Translate("isoc_cmd"))
 	
 	console.AddItem("new_nomination_controller", NewNominationController, local.Translate("new_controller_cmd"))
+	console.AddItem("add_to_nomination_controller", AddToNominationController, local.Translate("add_to_controller_cmd"))
 	console.AddItem("new_restricted_wallet", NewRestrictedWallet, local.Translate("new_restricted_wallet_cmd"))
+	console.AddItem("request_from_nomination_controller", RequestFromNominationController, local.Translate("request_from_nomination_controller_cmd"))
 
 	# console.AddItem("test", Test, "Test")
 	# console.AddItem("pt", PrintTest, "PrintTest")
@@ -1082,6 +1084,31 @@ def NewNominationController(args):
 		return
 	ton.CreateNominationController(name, nominatorAddr, workchain, subwallet, rewardShare, coverAbility)
 	ColorPrint("NewNominationController - {green}OK{endc}")
+#end define
+
+def AddToNominationController(args):
+	try:
+		walletName = args[0]
+		destination = args[1]
+		amount = args[2]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} add_to_nomination_controller <wallet-name> <controller-addr> <amount>")
+		return
+	destination = ton.GetDestinationAddr(destination)
+	ton.AddToNominationController(walletName, destination, amount)
+	ColorPrint("AddToNominationController - {green}OK{endc}")
+#end define
+
+def RequestFromNominationController(args):
+	try:
+		walletName = args[0]
+		destination = args[1]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} request_from_nomination_controller <wallet-name> <controller-addr>")
+		return
+	destination = ton.GetDestinationAddr(destination)
+	ton.RequestFromNominationController(walletName, destination)
+	ColorPrint("RequestFromNominationController - {green}OK{endc}")
 #end define
 
 def NewRestrictedWallet(args):
