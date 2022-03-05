@@ -318,7 +318,7 @@ def DownloadDump():
 	url = "https://bakery.ton.swisscops.com"
 	dumpSize = GetRequest(url + "/dumps/latest.size.txt")
 	print("dumpSize:", dumpSize)
-	needSpace = dumpSize * 3
+	needSpace = int(dumpSize) * 3
 	diskSpace = psutil.disk_usage("/var")
 	if needSpace < diskSpace.free:
 		return
