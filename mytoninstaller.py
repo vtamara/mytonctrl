@@ -217,8 +217,8 @@ def General():
 		mx = sys.argv.index("-t")
 		telemetry = sys.argv[mx+1]
 		local.buffer["telemetry"] = Str2Bool(telemetry)
-	if "-d" in sys.argv:
-		mx = sys.argv.index("-d")
+	if "--dump" in sys.argv:
+		mx = sys.argv.index("--dump")
 		dump = sys.argv[mx+1]
 		local.buffer["dump"] = Str2Bool(dump)
 	#end if

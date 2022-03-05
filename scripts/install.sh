@@ -80,7 +80,7 @@ fi
 # Запускаю установщик mytoninstaller.py
 echo -e "${COLOR}[3/4]${ENDC} Launching the mytoninstaller.py"
 user=$(ls -lh ${mydir}/${0} | cut -d ' ' -f 3)
-python3 ${SOURCES_DIR}/mytonctrl/mytoninstaller.py -m ${mode} -u ${user} -t ${telemetry} -d ${dump}
+python3 ${SOURCES_DIR}/mytonctrl/mytoninstaller.py -m ${mode} -u ${user} -t ${telemetry} --dump ${dump}
 
 # Выход из программы
 echo -e "${COLOR}[4/4]${ENDC} Mytonctrl installation completed"
