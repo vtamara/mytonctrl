@@ -315,17 +315,17 @@ def DownloadDump():
 	#end if
 	
 	local.AddLog("start DownloadDump fuction", "debug")
-	url = "https://bakery.ton.swisscops.com"
-	dumpSize = GetRequest(url + "/dumps/latest.size.txt")
+	url = "https://dump.ton.org"
+	dumpSize = GetRequest(url + "/dumps/latest.size.archive.txt")
 	print("dumpSize:", dumpSize)
 	needSpace = int(dumpSize) * 3
 	diskSpace = psutil.disk_usage("/var")
-	if needSpace < diskSpace.free:
+	if needSpace > diskSpace.free:
 		return
 	#end if
 	
 	# apt install
-	cmd = "apt install plzip pv"
+	cmd = "apt install plzip pv -y"
 	os.system(cmd)
 	
 	# download dump
