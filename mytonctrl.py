@@ -1053,7 +1053,8 @@ def Xlist(args):
 #end define
 
 def GetPubKey(args):
-	pubkey = ton.GetPubKey(ton.adnlAddr)
+	adnlAddr = ton.GetAdnlAddr()
+	pubkey = ton.GetPubKey(adnlAddr)
 	print("pubkey:", pubkey)
 #end define
 

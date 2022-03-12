@@ -3087,14 +3087,14 @@ class MyTonCore():
 	
 	def ImportShardOverlayCert(self):
 		local.AddLog("start ImportShardOverlayCert function", "debug")
-		adnlAddr = local.db.get("adnlAddr")
+		adnlAddr = self.GetAdnlAddr()
 		pubkey = self.GetPubKey(adnlAddr)
 		adnl = pubkey # adnl = adnlAddr
 		fileName = self.tempDir + pubkey + ".cert"
 		
 		cert = None
 		addrHex = "0:" + adnl
-		addr = self.HexAddr2Base64Addr(addrHex, bounceable=False)
+		addr = self.HexAddr2Base64Addr(addrHex)
 		account = self.GetAccount(addr)
 		history = self.GetAccountHistory(account, 10)
 		vwl = self.GetValidatorsWalletsList()
@@ -3552,7 +3552,7 @@ def Telemetry(ton):
 
 	# Get validator status
 	data = dict()
-	data["adnlAddr"] = ton.adnlAddr
+	data["adnlAddr"] = ton.GetAdnlAddr()
 	data["validatorStatus"] = ton.GetValidatorStatus()
 	data["cpuNumber"] = psutil.cpu_count()
 	data["cpuLoad"] = GetLoadAvg()
