@@ -1,6 +1,6 @@
 # How to become a validator using mytonctrl (v0.2, OS Ubuntu)
 
-![Setup Node/Validator video instruction](https://github.com/ton-blockchain/docs/raw/master/docs/nodes/setup_validator.mp4 ':include controls :type=video width=100% height=400px')
+https://github.com/ton-blockchain/docs/raw/master/docs/nodes/setup_validator.mp4
 
 ### 1. Install mytonctrl:
 Download the installation script on behalf of the user on whose name mytonctrl will be installed. I strongly advise against installing mytoncore as root. In our case, on behalf of user:
