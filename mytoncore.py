@@ -374,7 +374,7 @@ class MyTonCore():
 				return history
 	#end define
 	
-	def GetAccountHistory(self, account, limit):
+	def GetAccountHistory_old2(self, account, limit):
 		local.AddLog("start GetAccountHistory function", "debug")
 		lt=account.lt
 		hash=account.hash
@@ -479,6 +479,138 @@ class MyTonCore():
 				return history
 	#end define
 	
+	def GetAccountHistory(self, account, limit):
+		local.AddLog("start GetAccountHistory function", "debug")
+		lt=account.lt
+		hash=account.hash
+		history = list()
+		ready = 0
+		while True:
+			cmd = "lasttransdump {addr} {lt} {hash}".format(addr=account.addr, lt=lt, hash=hash)
+			result = self.liteClient.Run(cmd)
+			data = self.Result2Dict(result)
+			buff = self.GetKeyFromDict(data, "previous transaction has")
+			lt = Pars(buff, "lt ", ' ')
+			hash = Pars(buff, "hash ", ' ')
+			arr = result.split("transaction #")
+			for key, item in data.items():
+				if "transaction #" not in key:
+					continue
+				ready += 1
+				block = Pars(key, "from block ", ' ')
+				buff = self.GetKeyFromDict(item, "time=")
+				time = Pars(buff, "time=", ' ')
+				outmsg = Pars(buff, "outmsg_cnt=", '\n')
+				total_fees = self.GetItemFromDict(item, "total_fees")
+				buff_grams = self.GetItemFromDict(total_fees, "grams")
+				buff = self.GetKeyFromDict(buff_grams, "amount")
+				total_fees = Pars(buff, "value:", ')')
+				messages = self.GetMessagesFromTransaction(item)
+				transData = dict()
+				transData["block"] = block
+				transData["time"] = int(time)
+				transData["outmsg"] = int(outmsg)
+				transData["total_fees"] = int(total_fees)
+				self.ParsMessages(history, messages, transData)
+			if lt is None or ready >= limit:
+				return history
+	#end define
+	
+	def ParsMessages(self, history, messages, transData):
+		for item in messages:
+			message = self.GetItemFromDict(item, "message")
+			info = self.GetItemFromDict(message, "info")
+			buff = self.GetKeyFromDict(message, "info")
+			ihr_disabled = Pars(buff, "ihr_disabled:", ' ')
+			bounce = Pars(buff, "bounce:", ' ')
+			bounced = Pars(buff, "bounced:")
+			
+			src = self.GetItemFromDict(info, "src")
+			buff = self.GetKeyFromDict(src, "address")
+			if buff is None:
+				continue
+			workchain = Pars(buff, "workchain_id:", ' ')
+			address = Pars(buff, "address:", ')')
+			src = "{}:{}".format(workchain, xhex2hex(address))
+			
+			dest = self.GetItemFromDict(info, "dest")
+			buff = self.GetKeyFromDict(dest, "address")
+			if buff is None:
+				continue
+			workchain = Pars(buff, "workchain_id:", ' ')
+			address = Pars(buff, "address:", ')')
+			dest = "{}:{}".format(workchain, xhex2hex(address))
+			
+			value = self.GetItemFromDict(info, "value")
+			grams = self.GetItemFromDict(value, "grams")
+			buff = self.GetKeyFromDict(grams, "amount")
+			ngrams = Pars(buff, "value:", ')')
+			if ngrams is None:
+				grams = None
+			else:
+				grams = ng2g(ngrams)
+			#end if
+			
+			ihr_fee = self.GetItemFromDict(info, "ihr_fee")
+			buff = self.GetKeyFromDict(ihr_fee, "amount")
+			ihr_fee = Pars(buff, "value:", ')')
+			
+			fwd_fee = self.GetItemFromDict(info, "fwd_fee")
+			buff = self.GetKeyFromDict(fwd_fee, "amount")
+			fwd_fee = Pars(buff, "value:", ')')
+			
+			import_fee = self.GetItemFromDict(info, "import_fee")
+			buff = self.GetKeyFromDict(import_fee, "amount")
+			import_fee = Pars(buff, "value:", ')')
+			
+			body = self.GetItemFromDict(message, "body")
+			value = self.GetItemFromDict(body, "value")
+			body = self.GetBodyFromDict(value)
+			comment = self.GetComment(body)
+
+			
+			
+			#storage_ph
+			#credit_ph
+			#compute_ph.gas_fees
+			#compute_ph.gas_used
+			#compute_ph.gas_limit
+			
+			output = dict()
+			output["block"] = transData.get("block")
+			output["time"] = transData.get("time")
+			output["outmsg"] = transData.get("outmsg")
+			output["total_fees"] = transData.get("total_fees")
+			output["ihr_disabled"] = int(ihr_disabled)
+			output["bounce"] = int(bounce)
+			output["bounced"] = int(bounced)
+			output["src"] = src
+			output["from"] = src
+			output["dest"] = dest
+			output["to"] = dest
+			output["grams"] = grams
+			output["value"] = grams
+			output["body"] = body
+			output["comment"] = comment
+			output["ihr_fee"] = int(ihr_fee)
+			output["fwd_fee"] = int(fwd_fee)
+			#output["storage_ph"] = storage_ph
+			#output["credit_ph"] = credit_ph
+			#output["gas_used"] = gas_used
+			history.append(output)
+		#end for
+	#end define
+	
+	def GetMessagesFromTransaction(self, data):
+		result = list()
+		for key, item in data.items():
+			if ("inbound message" in key or
+			"outbound message" in key):
+				result.append(item)
+		#end for
+		return result
+	#end define
+	
 	def GetBody(self, buff):
 		if buff is None:
 			return
@@ -495,6 +627,22 @@ class MyTonCore():
 				buff = "0" + buff
 			body += buff
 		#end for
+		return body
+	#end define
+	
+	def GetBodyFromDict(self, buff):
+		body = ""
+		for item in buff:
+			if "x{" not in item:
+				continue
+			buff = Pars(item, '{', '}')
+			buff = buff.replace('_', '')
+			if len(buff)%2 == 1:
+				buff = "0" + buff
+			body += buff
+		#end for
+		if body == "":
+			body = None
 		return body
 	#end define
 	
@@ -2706,6 +2854,70 @@ class MyTonCore():
 		data = json.loads(output)
 		return data
 	#end define
+	
+	def Result2Dict(self, result):
+		rawAny = False
+		data = dict()
+		tabSpaces = 2
+		parenElementsList = list()
+		lines = result.split('\n')
+		for line in lines:
+			firstSpacesCount = self.GetFirstSpacesCount(line)
+			deep = firstSpacesCount // tabSpaces
+			line = line.lstrip()
+			if "raw@Any" in line:
+				rawAny = True
+			if rawAny == True and ')' in line:
+				rawAny = False
+			if line[:2] == "x{" and rawAny == False:
+				continue
+			if deep == 0:
+				data[line] = dict()
+				parenElementsList = [line]
+			else:
+				buff = data
+				parenElementsList = parenElementsList[:deep]
+				for item in parenElementsList:
+					buff = buff[item]
+				buff[line] = dict()
+				parenElementsList.append(line)
+			#end if
+		#end for
+		return data
+	#end define
+	
+	def GetFirstSpacesCount(self, line):
+		result = 0
+		for item in line:
+			if item == ' ':
+				result += 1
+			else:
+				break
+		#end for
+		return result
+	#end define
+	
+	def GetKeyFromDict(self, data, search):
+		if data is None:
+			return None
+		for key, item in data.items():
+			if search in key:
+				return key
+			#end if
+		#end for
+		return None
+	#end define
+	
+	def GetItemFromDict(self, data, search):
+		if data is None:
+			return None
+		for key, item in data.items():
+			if search in key:
+				return item
+			#end if
+		#end for
+		return None
+	#end define
 
 	def NewDomain(self, domain):
 		local.AddLog("start NewDomain function", "debug")
@@ -3099,7 +3311,7 @@ class MyTonCore():
 		history = self.GetAccountHistory(account, 10)
 		vwl = self.GetValidatorsWalletsList()
 		for item in history:
-			src = item["from"]
+			src = item["src"]
 			src = self.HexAddr2Base64Addr(src)
 			if src not in vwl:
 				continue
@@ -3138,7 +3350,7 @@ class MyTonCore():
 		return result
 	#end define
 	
-	def CreateNominationController(self, name, nominatorAddr, workchain=0, subwallet=0, rewardShare=0, coverAbility=0):
+	def CreateNominationController(self, name, nominatorAddr, workchain=-1, subwallet=0, rewardShare=0, coverAbility=0):
 		local.AddLog("start CreateNominationController function", "debug")
 		walletPath = self.walletsDir + name
 		contractPath = self.contractsDir + "nomination-contract/"
@@ -3146,7 +3358,6 @@ class MyTonCore():
 			self.DownloadContract("https://github.com/EmelyanenkoK/nomination-contract")
 		#end if
 		
-		controller = dict()
 		fiftScript = contractPath + "scripts/new-nomination-controller.fif"
 		args = [fiftScript, workchain, subwallet, nominatorAddr, rewardShare, coverAbility, walletPath]
 		result = self.fift.Run(args)
@@ -3163,9 +3374,15 @@ class MyTonCore():
 		self.SendFile(resultFilePath, wallet)
 	#end define
 	
-	def RequestFromNominationController(self, walletName, destAddr):
+	def RequestFromNominationController(self, walletName, destAddr, amount):
 		wallet = self.GetLocalWallet(walletName)
-		bocPath = self.contractsDir + "nomination-contract/scripts/request-stake.boc"
+		fiftScript = self.contractsDir + "nomination-contract/scripts/request-stake.fif"
+		bocPath = self.contractsDir + "nomination-contract/scripts/request-stake"
+		args = [fiftScript, amount, bocPath]
+		print("args:", args)
+		result = self.fift.Run(args)
+		bocPath = Pars(result, "Saved to file ", ")")
+		print("result:", result)
 		resultFilePath = self.SignBocWithWallet(wallet, bocPath, destAddr, 1)
 		self.SendFile(resultFilePath, wallet)
 	#end define
@@ -3178,7 +3395,6 @@ class MyTonCore():
 			self.DownloadContract("https://github.com/EmelyanenkoK/nomination-contract")
 		#end if
 		
-		controller = dict()
 		fiftScript = contractPath + "scripts/new-restricted-wallet.fif"
 		args = [fiftScript, workchain, subwallet, ownerAddr, walletPath]
 		result = self.fift.Run(args)

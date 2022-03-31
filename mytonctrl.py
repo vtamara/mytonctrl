@@ -666,7 +666,7 @@ def GetHistoryTable(addr, limit):
 		time = item.get("time")
 		grams = item.get("value")
 		outmsg = item.get("outmsg")
-		if outmsg == 1:
+		if outmsg > 0:
 			type = ColorText("{red}{bold}>>>{endc}")
 			fromto = item.get("to")
 		else:
@@ -1078,7 +1078,7 @@ def NewNominationController(args):
 		nominatorAddr = args[1]
 		rewardShare = args[2]
 		coverAbility = args[3]
-		workchain = 0
+		workchain = -1
 		subwallet = 0
 	except:
 		ColorPrint("{red}Bad args. Usage:{endc} new_controller <controller-name> <nominator-addr> <reward-share> <cover-ability>")
@@ -1104,11 +1104,12 @@ def RequestFromNominationController(args):
 	try:
 		walletName = args[0]
 		destination = args[1]
+		amount = args[2]
 	except:
-		ColorPrint("{red}Bad args. Usage:{endc} request_from_nomination_controller <wallet-name> <controller-addr>")
+		ColorPrint("{red}Bad args. Usage:{endc} request_from_nomination_controller <wallet-name> <controller-addr> <amount>")
 		return
 	destination = ton.GetDestinationAddr(destination)
-	ton.RequestFromNominationController(walletName, destination)
+	ton.RequestFromNominationController(walletName, destination, amount)
 	ColorPrint("RequestFromNominationController - {green}OK{endc}")
 #end define
 
