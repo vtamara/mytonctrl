@@ -194,14 +194,13 @@ class Block():
 		self.seqno = int(buff[2])
 	#end define
 	
-	def __str__ (self):
+	def __str__(self):
 		result = f"({self.workchain},{self.shardchain},{self.seqno}):{self.rootHash}:{self.fileHash}"
 		return result
 	#end define
 	
-	def __repr__ (self):
-		result = f"({self.workchain},{self.shardchain},{self.seqno}):{self.rootHash}:{self.fileHash}"
-		return result
+	def __repr__(self):
+		return self.__str__()
 	#end define
 	
 	def __eq__(self, other):
@@ -220,12 +219,12 @@ class Trans():
 		self.hash = hash
 	#end define
 	
-	def __str__ (self):
+	def __str__(self):
 		return str(self.__dict__)
 	#end define
 	
-	def __repr__ (self):
-		return str(self.__dict__)
+	def __repr__(self):
+		return self.__str__()
 	#end define
 	
 	def __eq__(self, other):
@@ -251,12 +250,12 @@ class Message():
 		self.ihr_disabled = None
 	#end define
 	
-	def __str__ (self):
+	def __str__(self):
 		return str(self.__dict__)
 	#end define
 	
-	def __repr__ (self):
-		return str(self.__dict__)
+	def __repr__(self):
+		return self.__str__()
 	#end define
 	
 	def __eq__(self, other):
