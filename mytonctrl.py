@@ -73,7 +73,6 @@ def Init():
 	console.AddItem("new_restricted_wallet", NewRestrictedWallet, local.Translate("new_restricted_wallet_cmd"))
 	console.AddItem("request_from_nomination_controller", RequestFromNominationController, local.Translate("request_from_nomination_controller_cmd"))
 
-	# console.AddItem("test", Test, "Test")
 	# console.AddItem("pt", PrintTest, "PrintTest")
 	# console.AddItem("sl", sl, "sl")
 
@@ -151,46 +150,6 @@ def PrintTest(args):
 
 def sl(args):
 	Slashing(ton)
-#end define
-
-def Test(args):
-	start = "kf8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIue"
-	ok_arr = list()
-	pending_arr = list()
-	pending_arr.append(start)
-	while True:
-		try:
-			TestWork(ok_arr, pending_arr)
-		except KeyboardInterrupt:
-			buff = ok_arr + pending_arr
-			data = json.dumps(buff)
-			file = open("testoutput.txt", "wt")
-			file.write(data)
-			file.close()
-			break
-		except:
-			buff = ok_arr + pending_arr
-			data = json.dumps(buff)
-			file = open("testoutput.txt", "wt")
-			file.write(data)
-			file.close()
-#end define
-
-def TestWork(ok_arr, pending_arr):
-	addr = pending_arr.pop(0)
-	account = ton.GetAccount(addr)
-	history = ton.GetAccountHistory(account, 1000)
-	for item in history:
-		outmsg = item.get("outmsg")
-		if outmsg == 1:
-			haddr = item.get("to")
-		else:
-			haddr = item.get("from")
-		haddr = ton.HexAddr2Base64Addr(haddr)
-		if haddr not in pending_arr and haddr not in ok_arr:
-			pending_arr.append(haddr)
-	ok_arr.append(addr)
-	print(addr, len(ok_arr), len(pending_arr))
 #end define
 
 def PrintStatus(args):
@@ -662,20 +621,19 @@ def GetHistoryTable(addr, limit):
 	table = list()
 	typeText = ColorText("{red}{bold}{endc}")
 	table += [["Time", typeText, "Coins", "From/To"]]
-	for item in history:
-		time = item.get("time")
-		grams = item.get("value")
-		outmsg = item.get("outmsg")
-		if outmsg > 0:
+	for message in history:
+		if message.src is None:
+			continue
+		if message.src == account.addrHex:
 			type = ColorText("{red}{bold}>>>{endc}")
-			fromto = item.get("to")
+			fromto = message.dest
 		else:
 			type = ColorText("{blue}{bold}<<<{endc}")
-			fromto = item.get("from")
+			fromto = message.src
 		fromto = ton.HexAddr2Base64Addr(fromto)
-		#datetime = Timestamp2Datetime(time, "%Y.%m.%d %H:%M:%S")
-		datetime = timeago(time)
-		table += [[datetime, type, grams, fromto]]
+		#datetime = Timestamp2Datetime(message.time, "%Y.%m.%d %H:%M:%S")
+		datetime = timeago(message.time)
+		table += [[datetime, type, message.value, fromto]]
 	return table
 #end define
 

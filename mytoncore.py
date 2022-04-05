@@ -154,6 +154,7 @@ class Wallet:
 class Account:
 	def __init__(self):
 		self.addr = None
+		self.addrHex = None
 		self.status = "empty"
 		self.balance = 0
 		self.lt = None
@@ -167,6 +168,101 @@ class Domain(dict):
 		self["name"] = None
 		self["adnlAddr"] = None
 		self["walletName"] = None
+	#end define
+#end class
+
+class Block():
+	def __init__(self, str):
+		self.workchain = None
+		self.shardchain = None
+		self.seqno = None
+		self.rootHash = None
+		self.fileHash = None
+		self.ParsBlock(str)
+	#end define
+	
+	def ParsBlock(self, str):
+		buff = str.split(':')
+		self.rootHash = buff[1]
+		self.fileHash = buff[2]
+		buff = buff[0]
+		buff = buff.replace('(', '')
+		buff = buff.replace(')', '')
+		buff = buff.split(',')
+		self.workchain = int(buff[0])
+		self.shardchain = buff[1]
+		self.seqno = int(buff[2])
+	#end define
+	
+	def __str__ (self):
+		result = f"({self.workchain},{self.shardchain},{self.seqno}):{self.rootHash}:{self.fileHash}"
+		return result
+	#end define
+	
+	def __repr__ (self):
+		result = f"({self.workchain},{self.shardchain},{self.seqno}):{self.rootHash}:{self.fileHash}"
+		return result
+	#end define
+	
+	def __eq__(self, other):
+		if other is None:
+			return False
+		return self.rootHash == other.rootHash and self.fileHash == other.fileHash
+	#end define
+#end class
+
+class Trans():
+	def __init__(self, block, id, addrHex, lt, hash):
+		self.block = block
+		self.id = id
+		self.addrHex = addrHex
+		self.lt = lt
+		self.hash = hash
+	#end define
+	
+	def __str__ (self):
+		return str(self.__dict__)
+	#end define
+	
+	def __repr__ (self):
+		return str(self.__dict__)
+	#end define
+	
+	def __eq__(self, other):
+		if other is None:
+			return False
+		return self.hash == other.hash
+	#end define
+#end class
+
+class Message():
+	def __init__(self):
+		self.block = None
+		self.type = None
+		self.time = None
+		self.src = None
+		self.dest = None
+		self.value = None
+		self.body = None
+		self.comment = None
+		self.ihr_fee = None
+		self.fwd_fee = None
+		self.total_fees = None
+		self.ihr_disabled = None
+	#end define
+	
+	def __str__ (self):
+		return str(self.__dict__)
+	#end define
+	
+	def __repr__ (self):
+		return str(self.__dict__)
+	#end define
+	
+	def __eq__(self, other):
+		if other is None:
+			return False
+		return self.hash == other.hash
 	#end define
 #end class
 
@@ -304,6 +400,10 @@ class MyTonCore():
 		storage = self.GetVarFromWorkerOutput(result, "storage")
 		if storage is None:
 			return account
+		addr = self.GetVarFromWorkerOutput(result, "addr")
+		workchain = self.GetVar(addr, "workchain_id")
+		address = self.GetVar(addr, "address")
+		addrHex = "{}:{}".format(workchain, xhex2hex(address))
 		balance = self.GetVarFromWorkerOutput(storage, "balance")
 		grams = self.GetVarFromWorkerOutput(balance, "grams")
 		value = self.GetVarFromWorkerOutput(grams, "value")
@@ -316,7 +416,8 @@ class MyTonCore():
 		data = self.GetBody(data)
 		codeHash = self.GetCodeHash(code)
 		status = Pars(state, "account_", '\n')
-		account.addr = addr
+		account.addr = self.HexAddr2Base64Addr(addrHex)
+		account.addrHex = addrHex
 		account.status = status
 		account.balance = ng2g(value)
 		account.lt = Pars(result, "lt = ", ' ')
@@ -375,7 +476,7 @@ class MyTonCore():
 	#end define
 	
 	def GetAccountHistory_old2(self, account, limit):
-		local.AddLog("start GetAccountHistory function", "debug")
+		local.AddLog("start GetAccountHistory_old2 function", "debug")
 		lt=account.lt
 		hash=account.hash
 		history = list()
@@ -481,94 +582,77 @@ class MyTonCore():
 	
 	def GetAccountHistory(self, account, limit):
 		local.AddLog("start GetAccountHistory function", "debug")
-		lt=account.lt
-		hash=account.hash
+		lt = account.lt
+		hash = account.hash
 		history = list()
-		ready = 0
 		while True:
-			cmd = "lasttransdump {addr} {lt} {hash}".format(addr=account.addr, lt=lt, hash=hash)
-			result = self.liteClient.Run(cmd)
-			data = self.Result2Dict(result)
-			buff = self.GetKeyFromDict(data, "previous transaction has")
-			lt = Pars(buff, "lt ", ' ')
-			hash = Pars(buff, "hash ", ' ')
-			arr = result.split("transaction #")
-			for key, item in data.items():
-				if "transaction #" not in key:
-					continue
-				ready += 1
-				block = Pars(key, "from block ", ' ')
-				buff = self.GetKeyFromDict(item, "time=")
-				time = Pars(buff, "time=", ' ')
-				outmsg = Pars(buff, "outmsg_cnt=", '\n')
-				total_fees = self.GetItemFromDict(item, "total_fees")
-				buff_grams = self.GetItemFromDict(total_fees, "grams")
-				buff = self.GetKeyFromDict(buff_grams, "amount")
-				total_fees = Pars(buff, "value:", ')')
-				messages = self.GetMessagesFromTransaction(item)
-				transData = dict()
-				transData["block"] = block
-				transData["time"] = int(time)
-				transData["outmsg"] = int(outmsg)
-				transData["total_fees"] = int(total_fees)
-				self.ParsMessages(history, messages, transData)
-			if lt is None or ready >= limit:
+			data, lt, hash = self.LastTransDump(account.addr, lt, hash)
+			history += data
+			if lt is None or len(history) >= limit:
 				return history
 	#end define
 	
-	def ParsMessages(self, history, messages, transData):
-		for item in messages:
-			message = self.GetItemFromDict(item, "message")
-			info = self.GetItemFromDict(message, "info")
-			buff = self.GetKeyFromDict(message, "info")
-			ihr_disabled = Pars(buff, "ihr_disabled:", ' ')
-			bounce = Pars(buff, "bounce:", ' ')
-			bounced = Pars(buff, "bounced:")
-			
-			src = self.GetItemFromDict(info, "src")
-			buff = self.GetKeyFromDict(src, "address")
-			if buff is None:
+	def LastTransDump(self, addr, lt, hash, count=10):
+		history = list()
+		cmd = f"lasttransdump {addr} {lt} {hash} {count}"
+		result = self.liteClient.Run(cmd)
+		data = self.Result2Dict(result)
+		prevTrans = self.GetKeyFromDict(data, "previous transaction")
+		prevTransLt = self.GetVar(prevTrans, "lt")
+		prevTransHash = self.GetVar(prevTrans, "hash")
+		for key, item in data.items():
+			if "transaction #" not in key:
 				continue
-			workchain = Pars(buff, "workchain_id:", ' ')
-			address = Pars(buff, "address:", ')')
-			src = "{}:{}".format(workchain, xhex2hex(address))
+			block_str = Pars(key, "from block ", ' ')
+			description = self.GetKeyFromDict(item, "description")
+			type = self.GetVar(description, "trans_")
+			time = self.GetVarFromDict(item, "time")
+			#outmsg = self.GetVarFromDict(item, "outmsg_cnt")
+			total_fees = self.GetVarFromDict(item, "total_fees.grams.value")
+			messages = self.GetMessagesFromTransaction(item)
+			transData = dict()
+			transData["type"] = type
+			transData["block"] = Block(block_str)
+			transData["time"] = time
+			#transData["outmsg"] = outmsg
+			transData["total_fees"] = total_fees
+			history += self.ParsMessages(messages, transData)
+		return history, prevTransLt, prevTransHash
+	#end define
+	
+	def ParsMessages(self, messages, transData):
+		history = list()
+		#for item in messages:
+		for data in messages:
+			src = None
+			dest = None
+			ihr_disabled = self.GetVarFromDict(data, "message.ihr_disabled")
+			bounce = self.GetVarFromDict(data, "message.bounce")
+			bounced = self.GetVarFromDict(data, "message.bounced")
 			
-			dest = self.GetItemFromDict(info, "dest")
-			buff = self.GetKeyFromDict(dest, "address")
-			if buff is None:
-				continue
-			workchain = Pars(buff, "workchain_id:", ' ')
-			address = Pars(buff, "address:", ')')
-			dest = "{}:{}".format(workchain, xhex2hex(address))
-			
-			value = self.GetItemFromDict(info, "value")
-			grams = self.GetItemFromDict(value, "grams")
-			buff = self.GetKeyFromDict(grams, "amount")
-			ngrams = Pars(buff, "value:", ')')
-			if ngrams is None:
-				grams = None
-			else:
-				grams = ng2g(ngrams)
+			workchain = self.GetVarFromDict(data, "message.info.src.workchain_id")
+			address = self.GetVarFromDict(data, "message.info.src.address")
+			if address:
+				src = "{}:{}".format(workchain, xhex2hex(address))
 			#end if
 			
-			ihr_fee = self.GetItemFromDict(info, "ihr_fee")
-			buff = self.GetKeyFromDict(ihr_fee, "amount")
-			ihr_fee = Pars(buff, "value:", ')')
+			workchain = self.GetVarFromDict(data, "message.info.dest.workchain_id")
+			address = self.GetVarFromDict(data, "message.info.dest.address")
+			if address:
+				dest = "{}:{}".format(workchain, xhex2hex(address))
+			#end if
 			
-			fwd_fee = self.GetItemFromDict(info, "fwd_fee")
-			buff = self.GetKeyFromDict(fwd_fee, "amount")
-			fwd_fee = Pars(buff, "value:", ')')
+			grams = self.GetVarFromDict(data, "message.info.value.grams.value")
+			ihr_fee = self.GetVarFromDict(data, "message.info.ihr_fee.value")
+			fwd_fee = self.GetVarFromDict(data, "message.info.fwd_fee.value")
+			import_fee = self.GetVarFromDict(data, "message.info.import_fee.value")
 			
-			import_fee = self.GetItemFromDict(info, "import_fee")
-			buff = self.GetKeyFromDict(import_fee, "amount")
-			import_fee = Pars(buff, "value:", ')')
-			
+			#body = self.GetVarFromDict(data, "message.body.value")
+			message = self.GetItemFromDict(data, "message")
 			body = self.GetItemFromDict(message, "body")
 			value = self.GetItemFromDict(body, "value")
 			body = self.GetBodyFromDict(value)
 			comment = self.GetComment(body)
-
-			
 			
 			#storage_ph
 			#credit_ph
@@ -576,30 +660,31 @@ class MyTonCore():
 			#compute_ph.gas_used
 			#compute_ph.gas_limit
 			
-			output = dict()
-			output["block"] = transData.get("block")
-			output["time"] = transData.get("time")
-			output["outmsg"] = transData.get("outmsg")
-			output["total_fees"] = transData.get("total_fees")
-			output["ihr_disabled"] = int(ihr_disabled)
-			output["bounce"] = int(bounce)
-			output["bounced"] = int(bounced)
-			output["src"] = src
-			output["from"] = src
-			output["dest"] = dest
-			output["to"] = dest
-			output["grams"] = grams
-			output["value"] = grams
-			output["body"] = body
-			output["comment"] = comment
-			output["ihr_fee"] = int(ihr_fee)
-			output["fwd_fee"] = int(fwd_fee)
-			#output["storage_ph"] = storage_ph
-			#output["credit_ph"] = credit_ph
-			#output["gas_used"] = gas_used
-			history.append(output)
+			message = Message()
+			message.type = transData.get("type")
+			message.block = transData.get("block")
+			message.time = transData.get("time")
+			#message.outmsg = transData.get("outmsg")
+			message.total_fees = ng2g(transData.get("total_fees"))
+			message.ihr_disabled = ihr_disabled
+			message.bounce = bounce
+			message.bounced = bounced
+			message.src = src
+			message.dest = dest
+			message.value = ng2g(grams)
+			message.body = body
+			message.comment = comment
+			message.ihr_fee = ng2g(ihr_fee)
+			message.fwd_fee = ng2g(fwd_fee)
+			#message.storage_ph = storage_ph
+			#message.credit_ph = credit_ph
+			#message.compute_ph = compute_ph
+			history.append(message)
 		#end for
+		return history
 	#end define
+	
+	
 	
 	def GetMessagesFromTransaction(self, data):
 		result = list()
@@ -631,6 +716,10 @@ class MyTonCore():
 	#end define
 	
 	def GetBodyFromDict(self, buff):
+		if buff is None:
+			return
+		#end if
+		
 		body = ""
 		for item in buff:
 			if "x{" not in item:
@@ -656,7 +745,9 @@ class MyTonCore():
 		result = None
 		if start == "00000000":
 			buff = bytes.fromhex(data)
-			result = buff.decode("utf-8")
+			try:
+				result = buff.decode("utf-8")
+			except: pass
 		return result
 	#end define
 
@@ -981,14 +1072,14 @@ class MyTonCore():
 		for line in lines:
 			if "latest masterchain block" in line:
 				buff = line.split(' ')
-				block = buff[7]
+				block = Block(buff[7])
 				break
 		return block
 	#end define
 	
 	def GetInitBlock_new(self):
 		#block = self.GetLastBlock()
-		#cmd = "gethead " + block
+		#cmd = f"gethead {block}"
 		#result = self.liteClient.Run(cmd)
 		#seqno =  Pars(result, "prev_key_block_seqno=", '\n')
 		statesDir = "/var/ton-work/db/archive/states"
@@ -1009,7 +1100,7 @@ class MyTonCore():
 	
 	def GetInitBlock(self):
 		block = self.GetLastBlock()
-		cmd = "gethead " + block
+		cmd = f"gethead {block}"
 		result = self.liteClient.Run(cmd)
 		seqno =  Pars(result, "prev_key_block_seqno=", '\n')
 		data = self.GetBlockHead(-1, 8000000000000000, seqno)
@@ -1017,18 +1108,21 @@ class MyTonCore():
 	#end define
 	
 	def GetBlockHead(self, workchain, shardchain, seqno):
+		block = GetBlock(workchain, shardchain, seqno)
+		data = dict()
+		data["seqno"] = block.seqno
+		data["rootHash"] = block.rootHash
+		data["fileHash"] = block.fileHash
+		return data
+	#end define
+	
+	def GetBlock(self, workchain, shardchain, seqno):
 		cmd = "byseqno {workchain}:{shardchain} {seqno}"
 		cmd = cmd.format(workchain=workchain, shardchain=shardchain, seqno=seqno)
 		result = self.liteClient.Run(cmd)
-		buff =  Pars(result, "block header of ", ' ')
-		buff = buff.split(':')
-		rootHash = hex2base64(buff[1])
-		fileHash = hex2base64(buff[2])
-		data = dict()
-		data["seqno"] = seqno
-		data["rootHash"] = rootHash
-		data["fileHash"] = fileHash
-		return data
+		block_str =  Pars(result, "block header of ", ' ')
+		block = Block(block_str)
+		return block
 	#end define
 
 	def GetTransactions(self, block):
@@ -1045,86 +1139,16 @@ class MyTonCore():
 				trans_account = buff[3]
 				trans_lt = buff[5]
 				trans_hash = buff[7]
-				trans = {"id": trans_id, "account": trans_account, "lt": trans_lt, "hash": trans_hash}
+				#trans = {"id": trans_id, "account": trans_account, "lt": trans_lt, "hash": trans_hash}
+				addrHex = f"{block.workchain}:{trans_account}"
+				trans = Trans(block, trans_id, addrHex, trans_lt, trans_hash)
 				transactions.append(trans)
 		return transactions
 	#end define
 
-	def GetTrans(self, block, addr, lt):
-		cmd = "dumptrans {block} {addr} {lt}".format(block=block, addr=addr, lt=lt)
-		result = self.liteClient.Run(cmd)
-		if "transaction is" not in result:
-			return None
-		#end if
-
-		in_msg = self.GetVarFromWorkerOutput(result, "in_msg")
-		ihr_disabled = Pars(in_msg, "ihr_disabled:", ' ')
-		bounce = Pars(in_msg, "bounce:", ' ')
-		bounced = Pars(in_msg, "bounced:", '\n')
-		src_buff = self.GetVarFromWorkerOutput(in_msg, "src")
-		src_buff2 = self.GetVarFromWorkerOutput(src_buff, "address")
-		src = xhex2hex(src_buff2)
-		dest_buff = self.GetVarFromWorkerOutput(in_msg, "dest")
-		dest_buff2 = self.GetVarFromWorkerOutput(dest_buff, "address")
-		dest = xhex2hex(dest_buff2)
-		value_buff = self.GetVarFromWorkerOutput(in_msg, "value")
-		grams_buff = self.GetVarFromWorkerOutput(value_buff, "grams")
-		ngrams = self.GetVarFromWorkerOutput(grams_buff, "value")
-		if ngrams is None:
-			grams = None
-		else:
-			grams = ng2g(ngrams)
-		ihr_fee_buff = self.GetVarFromWorkerOutput(in_msg, "ihr_fee")
-		ihr_fee = self.GetVarFromWorkerOutput(ihr_fee_buff, "value")
-		fwd_fee_buff = self.GetVarFromWorkerOutput(in_msg, "fwd_fee")
-		fwd_fee = self.GetVarFromWorkerOutput(fwd_fee_buff, "value")
-		body_buff = self.GetVarFromWorkerOutput(in_msg, "body")
-		body_buff2 = self.GetVarFromWorkerOutput(body_buff, "value")
-		body = self.GetBody(body_buff2)
-		comment = self.GetComment(body)
-
-		total_fees_buff = self.GetVarFromWorkerOutput(result, "total_fees")
-		total_fees = self.GetVarFromWorkerOutput(total_fees_buff, "value")
-		storage_ph_buff = self.GetVarFromWorkerOutput(result, "storage_ph")
-		storage_ph_buff2 = self.GetVarFromWorkerOutput(storage_ph_buff, "value")
-		storage_ph = self.GetVarFromWorkerOutput(storage_ph_buff2, "value")
-		credit_ph_buff = self.GetVarFromWorkerOutput(result, "credit_ph")
-		credit_ph_buff2 = self.GetVarFromWorkerOutput(credit_ph_buff, "value")
-		credit_ph = self.GetVarFromWorkerOutput(credit_ph_buff2, "value")
-		compute_ph = self.GetVarFromWorkerOutput(result, "compute_ph")
-		gas_fees_buff = self.GetVarFromWorkerOutput(compute_ph, "gas_fees")
-		gas_fees = self.GetVarFromWorkerOutput(gas_fees_buff, "value")
-		gas_used_buff = self.GetVarFromWorkerOutput(compute_ph, "gas_used")
-		gas_used = self.GetVarFromWorkerOutput(gas_used_buff, "value")
-		gas_limit_buff = self.GetVarFromWorkerOutput(compute_ph, "gas_limit")
-		gas_limit = self.GetVarFromWorkerOutput(gas_limit_buff, "value")
-		vm_init_state_hash_buff = Pars(result, "vm_init_state_hash:", ' ')
-		vm_init_state_hash = xhex2hex(vm_init_state_hash_buff)
-		vm_final_state_hash_buff = Pars(result, "vm_final_state_hash:", ')')
-		vm_final_state_hash = xhex2hex(vm_final_state_hash_buff)
-		action_list_hash_buff = Pars(result, "action_list_hash:", '\n')
-		action_list_hash = xhex2hex(action_list_hash_buff)
-
-		output = dict()
-		output["ihr_disabled"] = ihr_disabled
-		output["bounce"] = bounce
-		output["bounced"] = bounced
-		output["src"] = src
-		output["dest"] = dest
-		output["value"] = grams
-		output["body"] = body
-		output["comment"] = comment
-		output["ihr_fee"] = ihr_fee
-		output["fwd_fee"] = fwd_fee
-		output["total_fees"] = total_fees
-		output["storage_ph"] = storage_ph
-		output["credit_ph"] = credit_ph
-		output["gas_used"] = gas_used
-		output["vm_init_state_hash"] = vm_init_state_hash
-		output["vm_final_state_hash"] = vm_final_state_hash
-		output["action_list_hash"] = action_list_hash
-
-		return output
+	def GetTrans(self, trans):
+		messageList, prevTransLt, prevTransHash = self.LastTransDump(trans.addrHex, trans.lt, trans.hash, count=1)
+		return messageList
 	#end define
 
 	def TryGetTransactionsNumber(self, block):
@@ -1158,7 +1182,7 @@ class MyTonCore():
 				buff = line.split(' ')
 				shard_id = buff[1]
 				shard_id = shard_id.replace('#', '')
-				shard_block = buff[3]
+				shard_block = Block(buff[3])
 				shard = {"id": shard_id, "block": shard_block}
 				shards.append(shard)
 		return shards
@@ -2897,6 +2921,36 @@ class MyTonCore():
 		return result
 	#end define
 	
+	def GetVarFromDict(self, data, search):
+		arr = search.split('.')
+		search2 = arr.pop()
+		for search in arr:
+			data = self.GetItemFromDict(data, search)
+		text = self.GetKeyFromDict(data, search2)
+		result = self.GetVar(text, search2)
+		try:
+			result = int(result)
+		except: pass
+		return result
+	#end define
+	
+	def GetVar(self, text, search):
+		if search is None or text is None:
+			return
+		if search not in text:
+			return
+		text = text[text.find(search) + len(search):]
+		if text[0] in [':', '=', ' ']:
+			text = text[1:]
+		search2 = ')'
+		if search2 in text:
+			text = text[:text.find(search2)]
+		search2 = ' '
+		if search2 in text:
+			text = text[:text.find(search2)]
+		return text
+	#end define
+	
 	def GetKeyFromDict(self, data, search):
 		if data is None:
 			return None
@@ -3269,6 +3323,7 @@ class MyTonCore():
 				elif "Expecting property name enclosed in double quotes" in err.msg:
 					text = text[:err.pos] + '"_":' + text[err.pos:]
 				else:
+					print(text)
 					raise err
 		#end while
 
@@ -3310,12 +3365,12 @@ class MyTonCore():
 		account = self.GetAccount(addr)
 		history = self.GetAccountHistory(account, 10)
 		vwl = self.GetValidatorsWalletsList()
-		for item in history:
-			src = item["src"]
+		for message in history:
+			src = message.src
 			src = self.HexAddr2Base64Addr(src)
 			if src not in vwl:
 				continue
-			comment = item["comment"]
+			comment = message.comment
 			buff = comment.encode("utf-8")
 			cert = base64.b64decode(buff)
 			break
@@ -3459,7 +3514,115 @@ class MyTonCore():
 	#end define
 #end class
 
+class TonBlocksScanner():
+	def __init__(self, ton, **kwargs):
+		self.ton = ton
+		self.prevMasterBlock = None
+		self.prevShardsBlock = dict()
+		self.blocksNum = 0
+		self.transNum = 0
+		self.nbr = kwargs.get("nbr") #NewBlockReaction
+		self.ntr = kwargs.get("ntr") #NewTransReaction
+		self.nmr = kwargs.get("nmr") #NewMessageReaction
+	#end define
+	
+	def Run(self):
+		self.StartThread(self.ScanBlocks, args=())
+	#end define
+	
+	def StartThread(self, func, args):
+		threading.Thread(target=func, args=args, name=func.__name__, daemon=True).start()
+	#end define
+	
+	def ScanBlocks(self):
+		while True:
+			self.ScanBlock()
+			time.sleep(1)
+	#end define
+	
+	def ScanBlock(self):
+		if self.ton.liteClient.pubkeyPath is None:
+			raise Exception("ScanBlocks error: local liteserver is not configured, stop thread")
+			exit()
+		block = self.ton.GetLastBlock()
+		self.SearchMissBlocks(block, self.prevMasterBlock)
+		if block != self.prevMasterBlock:
+			self.StartThread(self.ReadBlock, args=(block,))
+			self.prevMasterBlock = block
+	#end define
+
+	def ReadBlock(self, block):
+		self.StartThread(self.NewBlockReaction, args=(block,))
+		shards = self.ton.GetShards(block)
+		for shard in shards:
+			self.StartThread(self.ReadShard, args=(shard,))
+	#end define
+
+	def ReadShard(self, shard):
+		block = shard.get("block")
+		prevBlock = self.GetShardPrevBlock(block.shardchain)
+		self.SearchMissBlocks(block, prevBlock)
+		#end if
+		if block != prevBlock:
+			self.StartThread(self.NewBlockReaction, args=(block,))
+			self.SetShardPrevBlock(block)
+	#end define
+	
+	def SearchMissBlocks(self, block, prevBlock):
+		if prevBlock is None:
+			return
+		diff = block.seqno - prevBlock.seqno
+		for i in range(1, diff):
+			workchain = block.workchain
+			shardchain = block.shardchain
+			seqno = block.seqno - i
+			self.StartThread(self.SearchBlock, args=(workchain, shardchain, seqno))
+	#end define
+
+	def SearchBlock(self, workchain, shardchain, seqno):
+		block = self.ton.GetBlock(workchain, shardchain, seqno)
+		self.StartThread(self.NewBlockReaction, args=(block,))
+	#end define
+
+	def GetShardPrevBlock(self, shardchain):
+		prevBlock = self.prevShardsBlock.get(shardchain)
+		return prevBlock
+	#end define
+
+	def SetShardPrevBlock(self, prevBlock):
+		self.prevShardsBlock[prevBlock.shardchain] = prevBlock
+	#end define
+
+	def NewBlockReaction(self, block):
+		#print(f"{bcolors.green} block: {bcolors.endc} {block}")
+		self.blocksNum += 1
+		if self.nbr:
+			self.StartThread(self.nbr, args=(block,))
+		transactions = self.ton.GetTransactions(block)
+		for trans in transactions:
+			self.StartThread(self.NewTransReaction, args=(trans,))
+	#end define
+
+	def NewTransReaction(self, trans):
+		#print(f"{bcolors.magenta} trans: {bcolors.endc} {self.transNum}", "debug")
+		self.transNum += 1
+		if self.ntr:
+			self.StartThread(self.ntr, args=(trans,))
+		messageList = self.ton.GetTrans(trans)
+		for message in messageList:
+			self.NewMessageReaction(message)
+	#end define
+
+	def NewMessageReaction(self, message):
+		if self.nmr:
+			self.StartThread(self.nmr, args=(message,))
+		#print(f"{bcolors.yellow} message: {bcolors.endc} {message}")
+	#end define
+#end class
+
 def ng2g(ng):
+	if ng is None:
+		return
 	return int(ng)/10**9
 #end define
 
@@ -3472,14 +3635,17 @@ def Init():
 	#end if
 
 	local.Run()
-	local.buffer["oldBlock"] = None
-	local.buffer["blocks"] = list()
-	local.buffer["transNum"] = 0
-	local.buffer["blocksNum"] = 0
-	local.buffer["masterBlocksNum"] = 0
-	local.buffer["transNumList"] = [0]*15*6
+	
+	# statistics
+	local.buffer["transData"] = dict()
 	local.buffer["network"] = [None]*15*6
 	local.buffer["diskio"] = [None]*15*6
+	
+	# scan blocks
+	local.buffer["masterBlocksList"] = list()
+	local.buffer["prevShardsBlock"] = dict()
+	local.buffer["blocksNum"] = 0
+	local.buffer["transNum"] = 0
 #end define
 
 def Event(eventName):
@@ -3516,11 +3682,11 @@ def Elections(ton):
 	ton.ElectionEntry()
 #end define
 
-def Statistics(ton):
+def Statistics(scanner):
 	ReadNetworkData()
 	SaveNetworkStatistics()
-	ReadTransNumData()
-	SaveTransNumStatistics()
+	ReadTransData(scanner)
+	SaveTransStatistics()
 	ReadDiskData()
 	SaveDiskStatistics()
 #end define
@@ -3676,50 +3842,80 @@ def CalculateNetworkStatistics(zerodata, data):
 	return netLoadAvg, ppsAvg
 #end define
 
-def ReadTransNumData():
-	transNum = local.buffer["transNum"]
-	local.buffer["transNumList"].pop(0)
-	local.buffer["transNumList"].append(transNum)
+def ReadTransData(scanner):
+	transData = local.buffer.get("transData")
+	SetToTimeData(transData, scanner.transNum)
+	ShortTimeData(transData)
 #end define
 
-def SaveTransNumStatistics():
-	data = local.buffer["transNumList"]
-	data = data[::-1]
-	zerodata = data[0]
-	buff1 = data[1*6-1]
-	buff5 = data[5*6-1]
-	buff15 = data[15*6-1]
+def SetToTimeData(timeDataList, data):
+	timenow = int(time.time())
+	timeDataList[timenow] = data
+#end define
 
-	# get avg
-	if buff1 != 0:
-		buff1 = zerodata - buff1
-	if buff5 != 0:
-		buff5 = zerodata - buff5
-	if buff15 != 0:
-		buff15 = zerodata - buff15
+def ShortTimeData(data, max=120, diff=20):
+	if len(data) < max:
+		return
+	buff = data.copy()
+	data.clear()
+	keys = sorted(buff.keys(), reverse=True)
+	for item in keys[:max-diff]:
+		data[item] = buff[item]
+#end define
 
-	# trans -> trans per sec (TPS)
-	buff1 = buff1 / (1*60)
-	buff5 = buff5 / (5*60)
-	buff15 = buff15 / (15*60)
-
-	# round
-	tps1 = round(buff1, 2)
-	tps5 = round(buff5, 2)
-	tps15 = round(buff15, 2)
-
-	# if ScanBlocks thread not working
-	diffTime = GetTimestamp() - local.buffer.get("scanBlocks_time", -1)
-	if diffTime > 60:
-		tps1 = -1
-		tps5 = -1
-		tps15 = -1
-	#end if
+def SaveTransStatistics():
+	tps1 = GetTps(60)
+	tps5 = GetTps(60*5)
+	tps15 = GetTps(60*15)
 
 	# save statistics
 	statistics = local.db.get("statistics", dict())
 	statistics["tpsAvg"] = [tps1, tps5, tps15]
 	local.db["statistics"] = statistics
+#end define
+
+def GetDataPerSecond(data, timediff):
+	if len(data) == 0:
+		return
+	timenow = sorted(data.keys())[-1]
+	now = data.get(timenow)
+	prev = GetItemFromTimeData(data, timenow-timediff)
+	if prev is None:
+		return
+	diff = now - prev
+	result = diff / timediff
+	result = round(result, 2)
+	return result
+#end define
+
+def GetItemFromTimeData(data, timeneed):
+	if timeneed in data:
+		result = data.get(timeneed)
+	else:
+		result = data[min(data.keys(), key=lambda k: abs(k-timeneed))]
+	return result
+#end define
+	
+
+def GetTps(timediff):
+	data = local.buffer["transData"]
+	tps = GetDataPerSecond(data, timediff)
+	return tps
+#end define
+
+def GetBps(timediff):
+	data = local.buffer["blocksData"]
+	bps = GetDataPerSecond(data, timediff)
+	return bps
+#end define
+
+def GetBlockTimeAvg(timediff):
+	bps = GetBps(timediff)
+	if bps is None or bps == 0:
+		return
+	result = 1/bps
+	result = round(result, 2)
+	return result
 #end define
 
 def Offers(ton):
@@ -3817,73 +4013,6 @@ def Telemetry(ton):
 	resp = requests.post(fullUrl, data=output, timeout=3)
 #end define
 
-def ScanBlocks(ton):
-	if ton.liteClient.pubkeyPath is None:
-		local.AddLog("ScanBlocks warning: local liteserver is not configured, stop thread", "warning")
-		exit()
-	validatorStatus = ton.GetValidatorStatus()
-	validatorOutOfSync = validatorStatus.get("outOfSync")
-	if validatorOutOfSync > 20:
-		local.AddLog("ScanBlocks warning: local validator out of sync, sleep 60 sec", "warning")
-		time.sleep(60)
-		return
-	block = ton.GetLastBlock()
-	local.buffer["scanBlocks_time"] = GetTimestamp()
-	if block != local.buffer["oldBlock"]:
-		local.buffer["oldBlock"] = block
-		local.buffer["blocks"].append(block)
-		local.buffer["blocksNum"] += 1
-		local.buffer["masterBlocksNum"] += 1
-#end define
-
-def ReadBlocks(ton):
-	blocks = local.buffer["blocks"]
-	if len(blocks) == 0:
-		return
-	block = blocks.pop(0)
-
-	# Разделить
-	buff1 = {"transNum": 0}
-	t1 = threading.Thread(target=SaveTransNumFromBlock, args=(ton, block, buff1), daemon=True)
-	t2 = threading.Thread(target=SaveShardsFromBlock, args=(ton, block, buff1), daemon=True)
-	t1.start()
-	t2.start()
-	t1.join()
-	t2.join()
-
-	# Собрать
-	transNum = buff1["transNum"]
-	shards = buff1["shards"]
-
-	# Разделить
-	buff2 = dict()
-	for shard in shards:
-		local.buffer["blocksNum"] += 1
-		threading.Thread(target=SaveTransNumFromShard, args=(ton, shard, buff2), daemon=True).start()
-	while len(buff2) < len(shards):
-		time.sleep(0.3)
-
-	# Собрать
-	for shard in shards:
-		shard_id = shard["id"]
-		transNum += buff2[shard_id]
-	local.buffer["transNum"] += transNum
-#end define
-
-def SaveTransNumFromBlock(ton, block, buff):
-	buff["transNum"] = ton.TryGetTransactionsNumber(block)
-#end define
-
-def SaveShardsFromBlock(ton, block, buff):
-	buff["shards"] = ton.GetShards(block)
-#end define
-
-def SaveTransNumFromShard(ton, shard, buff):
-	shard_id = shard["id"]
-	shard_block = shard["block"]
-	buff[shard_id] = ton.TryGetTransactionsNumber(shard_block)
-#end define
-
 def Complaints(ton):
 	validatorIndex = ton.GetValidatorIndex()
 	if validatorIndex < 0:
@@ -3946,17 +4075,17 @@ def ScanLiteServers(ton):
 def General():
 	local.AddLog("start General function", "debug")
 	ton = MyTonCore()
+	scanner = TonBlocksScanner(ton)
+	scanner.Run()
 
 	# Запустить потоки
 	local.StartCycle(Elections, sec=600, args=(ton, ))
-	local.StartCycle(Statistics, sec=10, args=(ton, ))
+	local.StartCycle(Statistics, sec=10, args=(scanner,))
 	local.StartCycle(Offers, sec=600, args=(ton, ))
 	local.StartCycle(Complaints, sec=600, args=(ton, ))
 	local.StartCycle(Slashing, sec=600, args=(ton, ))
 	local.StartCycle(Domains, sec=600, args=(ton, ))
 	local.StartCycle(Telemetry, sec=60, args=(ton, ))
-	local.StartCycle(ScanBlocks, sec=1, args=(ton,))
-	local.StartCycle(ReadBlocks, sec=0.3, args=(ton,))
 	local.StartCycle(ScanLiteServers, sec=60, args=(ton,))
 	Sleep()
 #end define
