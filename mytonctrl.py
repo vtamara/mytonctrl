@@ -69,9 +69,18 @@ def Init():
 	console.AddItem("isoc", ImportShardOverlayCert, local.Translate("isoc_cmd"))
 	
 	console.AddItem("new_nomination_controller", NewNominationController, local.Translate("new_controller_cmd"))
-	console.AddItem("add_to_nomination_controller", AddToNominationController, local.Translate("add_to_controller_cmd"))
+	console.AddItem("deposit_to_nomination_controller", DepositToNominationController, local.Translate("deposit_to_controller_cmd"))
 	console.AddItem("new_restricted_wallet", NewRestrictedWallet, local.Translate("new_restricted_wallet_cmd"))
 	console.AddItem("request_from_nomination_controller", RequestFromNominationController, local.Translate("request_from_nomination_controller_cmd"))
+	
+	console.AddItem("new_pool", NewPool, local.Translate("new_pool_cmd"))
+	console.AddItem("pools_list", PrintPoolsList, local.Translate("pools_list_cmd"))
+	console.AddItem("get_pool_data", GetPoolData, local.Translate("get_pool_data_cmd"))
+	console.AddItem("activate_pool", ActivatePool, local.Translate("activate_pool_cmd"))
+	console.AddItem("deposit_to_pool", DepositToPool, local.Translate("deposit_to_pool_cmd"))
+	console.AddItem("withdraw_from_pool", WithdrawFromPool, local.Translate("withdraw_from_pool_cmd"))
+	console.AddItem("delete_pool", DeletePool, local.Translate("delete_pool_cmd"))
+	console.AddItem("update_validator_set", UpdateValidatorSet, local.Translate("update_validator_set_cmd"))
 
 	# console.AddItem("pt", PrintTest, "PrintTest")
 	# console.AddItem("sl", sl, "sl")
@@ -622,14 +631,16 @@ def GetHistoryTable(addr, limit):
 	typeText = ColorText("{red}{bold}{endc}")
 	table += [["Time", typeText, "Coins", "From/To"]]
 	for message in history:
-		if message.src is None:
+		if message.srcAddr is None:
 			continue
-		if message.src == account.addrHex:
+		srcAddrFull = f"{message.srcWorkchain}:{message.srcAddr}"
+		destAddFull = f"{message.destWorkchain}:{message.destAddr}"
+		if srcAddrFull == account.addrFull:
 			type = ColorText("{red}{bold}>>>{endc}")
-			fromto = message.dest
+			fromto = destAddFull
 		else:
 			type = ColorText("{blue}{bold}<<<{endc}")
-			fromto = message.src
+			fromto = srcAddrFull
 		fromto = ton.HexAddr2Base64Addr(fromto)
 		#datetime = Timestamp2Datetime(message.time, "%Y.%m.%d %H:%M:%S")
 		datetime = timeago(message.time)
@@ -641,17 +652,17 @@ def MoveCoins(args):
 	try:
 		walletName = args[0]
 		destination = args[1]
-		gram = args[2]
+		amount = int(args[2])
 		if len(args) > 3:
 			flags = args[3:]
 		else:
 			flags = list()
 	except:
-		ColorPrint("{red}Bad args. Usage:{endc} mg <wallet-name> <account-addr | bookmark-name> <gram-amount>")
+		ColorPrint("{red}Bad args. Usage:{endc} mg <wallet-name> <account-addr | bookmark-name> <amount>")
 		return
 	wallet = ton.GetLocalWallet(walletName)
 	destination = ton.GetDestinationAddr(destination)
-	ton.MoveCoins(wallet, destination, gram, flags=flags)
+	ton.MoveCoins(wallet, destination, amount, flags=flags)
 	ColorPrint("MoveCoins - {green}OK{endc}")
 #end define
 
@@ -659,13 +670,13 @@ def MoveCoinsThroughProxy(args):
 	try:
 		walletName = args[0]
 		destination = args[1]
-		gram = args[2]
+		amount = int(args[2])
 	except:
-		ColorPrint("{red}Bad args. Usage:{endc} mgtp <wallet-name> <account-addr | bookmark-name> <gram-amount>")
+		ColorPrint("{red}Bad args. Usage:{endc} mgtp <wallet-name> <account-addr | bookmark-name> <amount>")
 		return
 	wallet = ton.GetLocalWallet(walletName)
 	destination = ton.GetDestinationAddr(destination)
-	ton.MoveCoinsThroughProxy(wallet, destination, gram)
+	ton.MoveCoinsThroughProxy(wallet, destination, amount)
 	ColorPrint("MoveCoinsThroughProxy - {green}OK{endc}")
 #end define
 
@@ -901,7 +912,8 @@ def DeleteDomain(args):
 #end define
 
 def PrintElectionEntriesList(args):
-	entries = ton.GetElectionEntries()
+	past = "past" in args
+	entries = ton.GetElectionEntries(past=past)
 	if "--json" in args:
 		text = json.dumps(entries, indent=2)
 		print(text)
@@ -925,8 +937,7 @@ def PrintElectionEntriesList(args):
 #end define
 
 def VoteElectionEntry(args):
-	ton.ReturnStake()
-	ton.ElectionEntry()
+	Elections(ton)
 	ColorPrint("VoteElectionEntry - {green}OK{endc}")
 #end define
 
@@ -1045,7 +1056,7 @@ def NewNominationController(args):
 	ColorPrint("NewNominationController - {green}OK{endc}")
 #end define
 
-def AddToNominationController(args):
+def DepositToNominationController(args):
 	try:
 		walletName = args[0]
 		destination = args[1]
@@ -1054,8 +1065,8 @@ def AddToNominationController(args):
 		ColorPrint("{red}Bad args. Usage:{endc} add_to_nomination_controller <wallet-name> <controller-addr> <amount>")
 		return
 	destination = ton.GetDestinationAddr(destination)
-	ton.AddToNominationController(walletName, destination, amount)
-	ColorPrint("AddToNominationController - {green}OK{endc}")
+	ton.DepositToNominationController(walletName, destination, amount)
+	ColorPrint("DepositToNominationController - {green}OK{endc}")
 #end define
 
 def RequestFromNominationController(args):
@@ -1082,6 +1093,117 @@ def NewRestrictedWallet(args):
 		return
 	ton.CreateRestrictedWallet(name, ownerAddr, workchain, subwallet)
 	ColorPrint("NewRestrictedWallet - {green}OK{endc}")
+#end define
+
+def NewPool(args):
+	try:
+		poolName = args[0]
+		if len(args) == 1:
+			validatorRewardShare = 4000
+			maxNominatorsCount = 10
+			minValidatorStake = 100
+			minNominatorStake = 100
+		else:
+			validatorRewardShare = args[1]
+			maxNominatorsCount = args[2]
+			minValidatorStake = args[3]
+			minNominatorStake = args[4]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} new_pool <pool-name> [<validator-reward-share> <max-nominators-count> <min-validator-stake> <min-nominator-stake>]")
+		return
+	ton.CreatePool(poolName, validatorRewardShare, maxNominatorsCount, minValidatorStake, minNominatorStake)
+	ColorPrint("NewPool - {green}OK{endc}")
+#end define
+
+def ActivatePool(args):
+	try:
+		poolName = args[0]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} activate_pool <pool-name>")
+		return
+	pool = ton.GetLocalPool(poolName)
+	if not os.path.isfile(pool.bocFilePath):
+		local.AddLog(f"Pool {poolName} already activated", "warning")
+		return
+	ton.ActivatePool(pool)
+	ColorPrint("ActivatePool - {green}OK{endc}")
+#end define
+
+def PrintPoolsList(args):
+	table = list()
+	table += [["Name", "Status", "Balance", "Address"]]
+	data = ton.GetPools()
+	if (data is None or len(data) == 0):
+		print("No data")
+		return
+	for pool in data:
+		account = ton.GetAccount(pool.addr)
+		if account.status != "active":
+			pool.addr = pool.addr_init
+		table += [[pool.name, account.status, account.balance, pool.addr]]
+	PrintTable(table)
+#end define
+
+def GetPoolData(args):
+	try:
+		poolName = args[0]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} get_pool_data <pool-name | pool-addr>")
+		return
+	if ton.IsAddr(poolName):
+		poolAddr = poolName
+	else:
+		pool = ton.GetLocalPool(poolName)
+		poolAddr = pool.addr
+	poolData = ton.GetPoolData(poolAddr)
+	print(json.dumps(poolData, indent=4))
+#end define
+
+def DepositToPool(args):
+	try:
+		walletName = args[0]
+		pollAddr = args[1]
+		amount = int(args[2])
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} deposit_to_pool <wallet-name> <pool-addr> <amount>")
+		return
+	ton.DepositToPool(walletName, pollAddr, amount)
+	ColorPrint("DepositToPool - {green}OK{endc}")
+#end define
+
+def WithdrawFromPool(args):
+	try:
+		walletName = args[0]
+		poolAddr = args[1]
+		amount = args[2]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} withdraw_from_pool <wallet-name> <pool-addr> <amount>")
+		return
+	poolAddr = ton.GetDestinationAddr(poolAddr)
+	ton.WithdrawFromPool(walletName, poolAddr, amount)
+	ColorPrint("WithdrawFromPool - {green}OK{endc}")
+#end define
+
+def DeletePool(args):
+	try:
+		poolName = args[0]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} delete_pool <pool-name>")
+		return
+	pool = ton.GetLocalPool(poolName)
+	pool.Delete()
+	ColorPrint("DeletePool - {green}OK{endc}")
+#end define
+
+def UpdateValidatorSet(args):
+	try:
+		poolAddr = args[0]
+	except:
+		ColorPrint("{red}Bad args. Usage:{endc} update_validator_set <pool-addr>")
+		return
+	wallet = self.GetValidatorWallet()
+	self.PoolUpdateValidatorSet(poolAddr, wallet)
+	ColorPrint("DeletePool - {green}OK{endc}")
 #end define
 
 

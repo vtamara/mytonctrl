@@ -680,6 +680,8 @@ def DangerousRecoveryValidatorConfigFile():
 	keys = list()
 	keyringDir = "/var/ton-work/db/keyring/"
 	keyring = os.listdir(keyringDir)
+	os.chdir(keyringDir)
+	sorted(keyring, key=os.path.getmtime)
 	for item in keyring:
 		b64String = hex2b64(item)
 		keys.append(b64String)
@@ -737,7 +739,7 @@ def DangerousRecoveryValidatorConfigFile():
 	ckey = mconfig["validatorConsole"]["pubKeyPath"]
 	addr = mconfig["validatorConsole"]["addr"]
 	buff = addr.split(':')
-	cport = buff[1]
+	cport = int(buff[1])
 	
 	# Read validator-console pubkey
 	file = open(ckey, 'rb')
@@ -765,7 +767,7 @@ def DangerousRecoveryValidatorConfigFile():
 	buffer2 = dict()
 	buffer["@type"] = "engine.controlInterface"
 	buffer["id"] = vcId
-	buffer["port"] = lport
+	buffer["port"] = cport
 	buffer2["@type"] = "engine.controlProcess"
 	buffer2["id"] = None
 	buffer2["permissions"] = 15
@@ -797,12 +799,6 @@ def DangerousRecoveryValidatorConfigFile():
 	vconfig["dht"] = [buffer]
 	
 	# Create adnl object
-	adnl1 = dict()
-	adnl1["@type"] = "engine.adnl"
-	adnl1["id"] = None
-	adnl1["category"] = 1
-	
-	# Create adnl object
 	adnl2 = dict()
 	adnl2["@type"] = "engine.adnl"
 	adnl2["id"] = dhtId
@@ -816,7 +812,62 @@ def DangerousRecoveryValidatorConfigFile():
 	adnl3["id"] = adnlId
 	adnl3["category"] = 0
 	
+	# Create adnl object
+	adnl1 = dict()
+	adnl1["@type"] = "engine.adnl"
+	adnl1["id"] = keys.pop(0)
+	adnl1["category"] = 1
+	
 	vconfig["adnl"] = [adnl1, adnl2, adnl3]
+	
+	# Get dumps from tmp
+	dumps = list()
+	dumpsDir = "/tmp/mytoncore/"
+	dumpsList = os.listdir(dumpsDir)
+	os.chdir(dumpsDir)
+	sorted(dumpsList, key=os.path.getmtime)
+	for item in dumpsList:
+		if "ElectionEntry.json" in item:
+			dumps.append(item)
+	#end for
+	
+	# Create validators object
+	validators = list()
+	
+	# Read dump file
+	while len(keys) > 0:
+		dumpPath = dumps.pop()
+		file = open(dumpPath, 'rt')
+		data = file.read()
+		file.close()
+		dump = json.loads(data)
+		vkey = hex2b64(dump["validatorKey"])
+		temp_key = dict()
+		temp_key["@type"] = "engine.validatorTempKey"
+		temp_key["key"] = vkey
+		temp_key["expire_at"] = dump["endWorkTime"]
+		adnl_addr = dict()
+		adnl_addr["@type"] = "engine.validatorAdnlAddress"
+		adnl_addr["id"] = adnlId
+		adnl_addr["expire_at"] = dump["endWorkTime"]
+		
+		# Create validator object
+		validator = dict()
+		validator["@type"] = "engine.validator"
+		validator["id"] = vkey
+		validator["temp_keys"] = [temp_key]
+		validator["adnl_addrs"] = [adnl_addr]
+		validator["election_date"] = dump["startWorkTime"]
+		validator["expire_at"] = dump["endWorkTime"]
+		if vkey in keys:
+			validators.append(validator)
+			keys.remove(vkey)
+		#end if
+	#end while
+	
+	# Add validators object to vconfig
+	vconfig["validators"] = validators
+	
 	
 	print("vconfig:", json.dumps(vconfig, indent=4))
 	print("keys:", keys)
