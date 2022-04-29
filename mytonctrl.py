@@ -201,7 +201,7 @@ def PrintStatus(args):
 	disksLoadAvg = ton.GetStatistics("disksLoadAvg", statistics)
 	disksLoadPercentAvg = ton.GetStatistics("disksLoadPercentAvg", statistics)
 	if validatorWallet is not None:
-		validatorAccount = ton.GetAccount(validatorWallet.addr)
+		validatorAccount = ton.GetAccount(validatorWallet.addrB64)
 	else:
 		validatorAccount = None
 	PrintTonStatus(startWorkTime, totalValidators, onlineValidators, shardsNumber, offersNumber, complaintsNumber, tpsAvg)
@@ -253,7 +253,7 @@ def PrintTonStatus(startWorkTime, totalValidators, onlineValidators, shardsNumbe
 def PrintLocalStatus(adnlAddr, validatorIndex, validatorEfficiency, validatorWallet, validatorAccount, validatorStatus, dbSize, dbUsage, memoryInfo, swapInfo, netLoadAvg, disksLoadAvg, disksLoadPercentAvg):
 	if validatorWallet is None:
 		return
-	walletAddr = validatorWallet.addr
+	walletAddr = validatorWallet.addrB64
 	walletBalance = validatorAccount.balance
 	cpuNumber = psutil.cpu_count()
 	loadavg = GetLoadAvg()
@@ -474,7 +474,7 @@ def CreatNewWallet(args):
 	wallet = ton.CreateWallet(walletName, workchain, version, subwallet)
 	table = list()
 	table += [["Name", "Workchain", "Address"]]
-	table += [[wallet.name, wallet.workchain, wallet.addr_init]]
+	table += [[wallet.name, wallet.workchain, wallet.addrB64_init]]
 	PrintTable(table)
 #end define
 
@@ -502,10 +502,10 @@ def PrintWalletsList(args):
 		print("No data")
 		return
 	for wallet in data:
-		account = ton.GetAccount(wallet.addr)
+		account = ton.GetAccount(wallet.addrB64)
 		if account.status != "active":
-			wallet.addr = wallet.addr_init
-		table += [[wallet.name, account.status, account.balance, wallet.version, wallet.workchain, wallet.addr]]
+			wallet.addrB64 = wallet.addrB64_init
+		table += [[wallet.name, account.status, account.balance, wallet.version, wallet.workchain, wallet.addrB64]]
 	PrintTable(table)
 #end define
 
@@ -568,21 +568,6 @@ def ExportWallet(args):
 	print("Secret key:", key)
 #end define
 
-def SaveWalletAddressToFile(args):
-	try:
-		walletName = args[0]
-	except:
-		ColorPrint("{red}Bad args. Usage:{endc} sw <wallet-name>")
-		return
-	wallet = ton.GetLocalWallet(walletName)
-	wjson = {"name":wallet.name, "workchain":wallet.workchain, "addr":wallet.addr, "addr_hex":wallet.addr_hex, "addr_init":wallet.addr_init}
-	text = json.dumps(wjson)
-	file = open(walletName + "-addr.json", 'w')
-	file.write(text)
-	file.close()
-	ColorPrint("SaveWalletAddressToFile - {green}OK{endc}")
-#end define
-
 def DeleteWallet(args):
 	try:
 		walletName = args[0]
@@ -641,7 +626,7 @@ def GetHistoryTable(addr, limit):
 		else:
 			type = ColorText("{blue}{bold}<<<{endc}")
 			fromto = srcAddrFull
-		fromto = ton.HexAddr2Base64Addr(fromto)
+		fromto = ton.AddrFull2AddrB64(fromto)
 		#datetime = Timestamp2Datetime(message.time, "%Y.%m.%d %H:%M:%S")
 		datetime = timeago(message.time)
 		table += [[datetime, type, message.value, fromto]]
@@ -1137,10 +1122,10 @@ def PrintPoolsList(args):
 		print("No data")
 		return
 	for pool in data:
-		account = ton.GetAccount(pool.addr)
+		account = ton.GetAccount(pool.addrB64)
 		if account.status != "active":
-			pool.addr = pool.addr_init
-		table += [[pool.name, account.status, account.balance, pool.addr]]
+			pool.addrB64 = pool.addrB64_init
+		table += [[pool.name, account.status, account.balance, pool.addrB64]]
 	PrintTable(table)
 #end define
 
@@ -1154,7 +1139,7 @@ def GetPoolData(args):
 		poolAddr = poolName
 	else:
 		pool = ton.GetLocalPool(poolName)
-		poolAddr = pool.addr
+		poolAddr = pool.addrB64
 	poolData = ton.GetPoolData(poolAddr)
 	print(json.dumps(poolData, indent=4))
 #end define

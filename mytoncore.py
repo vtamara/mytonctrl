@@ -115,34 +115,21 @@ class Miner:
 #end class
 
 class Wallet:
-	def __init__(self):
-		self.name = None
-		self.path = None
-		self.addrFilePath = None
-		self.privFilePath = None
-		self.bocFilePath = None
-		self.fullAddr = None
+	def __init__(self, name, path, version):
+		self.name = name
+		self.path = path
+		self.addrFilePath = f"{path}.addr"
+		self.privFilePath = f"{path}.pk"
+		self.bocFilePath = f"{path}-query.boc"
+		self.addrFull = None
 		self.workchain = None
-		self.addr_hex = None
 		self.addr = None
-		self.addr_init = None
+		self.addrB64 = None
+		self.addrB64_init = None
 		self.oldseqno = None
 		self.account = None
 		self.subwallet = None
-		self.version = None
-	#end define
-
-	def Refresh(self):
-		buff = self.fullAddr.split(':')
-		self.workchain = buff[0]
-		self.addr_hex = buff[1]
-		self.privFilePath = self.path + ".pk"
-		if self.version and "h" in self.version:
-			self.addrFilePath = self.path + str(self.subwallet) + ".addr"
-			self.bocFilePath = self.path + str(self.subwallet) + "-query.boc"
-		else:
-			self.addrFilePath = self.path + ".addr"
-			self.bocFilePath = self.path + "-query.boc"
+		self.version = version
 	#end define
 
 	def Delete(self):
@@ -282,18 +269,12 @@ class Pool:
 		self.path = path
 		self.addrFilePath = f"{path}.addr"
 		self.bocFilePath = f"{path}-query.boc"
-		self.fullAddr = None
+		self.addrFull = None
 		self.workchain = None
-		self.addr_hex = None
 		self.addr = None
-		self.addr_init = None
+		self.addrB64 = None
+		self.addrB64_init = None
 		self.account = None
-	#end define
-
-	def Refresh(self):
-		buff = self.fullAddr.split(':')
-		self.workchain = buff[0]
-		self.addr_hex = buff[1]
 	#end define
 
 	def Delete(self):
@@ -417,7 +398,7 @@ class MyTonCore():
 
 	def GetSeqno(self, wallet):
 		local.AddLog("start GetSeqno function", "debug")
-		cmd = "runmethodfull {addr} seqno".format(addr=wallet.addr)
+		cmd = "runmethodfull {addr} seqno".format(addr=wallet.addrB64)
 		result = self.liteClient.Run(cmd)
 		if "cannot run any methods" in result:
 			return None
@@ -457,7 +438,7 @@ class MyTonCore():
 		status = Pars(state, "account_", '\n')
 		account.workchain = int(workchain)
 		account.addr = xhex2hex(address)
-		account.addrB64 = self.HexAddr2Base64Addr(addrFull)
+		account.addrB64 = self.AddrFull2AddrB64(addrFull)
 		account.addrFull = addrFull
 		account.status = status
 		account.balance = ng2g(value)
@@ -860,19 +841,11 @@ class MyTonCore():
 		if os.path.isfile(filePath + ".pk") == False:
 			raise Exception("GetWalletFromFile error: Private key not found: " + filePath)
 		#end if
-
+		
 		# Create wallet object
-		wallet = Wallet()
-		wallet.version = version
-		wallet.path = filePath
-		if '/' in filePath:
-			wallet.name = filePath[filePath.rfind('/')+1:]
-		else:
-			wallet.name = filePath
-		#end if
-
-		addrFilePath = filePath + ".addr"
-		self.AddrFile2Wallet(wallet, addrFilePath)
+		walletName = filePath[filePath.rfind('/')+1:]
+		wallet = Wallet(walletName, filePath, version)
+		self.AddrFile2Object(wallet)
 		self.WalletVersion2Wallet(wallet)
 		return wallet
 	#end define
@@ -887,41 +860,34 @@ class MyTonCore():
 		if os.path.isfile(filePath + ".pk") == False:
 			raise Exception("GetHighWalletFromFile error: Private key not found: " + filePath)
 		#end if
-
+		
 		# Create wallet object
-		wallet = Wallet()
+		walletName = filePath[filePath.rfind('/')+1:]
+		wallet = Wallet(walletName, filePath, version)
 		wallet.subwallet = subwallet
-		wallet.version = version
-		wallet.path = filePath
-		if '/' in filePath:
-			wallet.name = filePath[filePath.rfind('/')+1:]
-		else:
-			wallet.name = filePath
-		#end if
-
-		addrFilePath = filePath + str(subwallet) + ".addr"
-		self.AddrFile2Wallet(wallet, addrFilePath)
+		wallet.addrFilePath = f"{filePath}{subwallet}.addr"
+		wallet.bocFilePath = f"{filePath}{subwallet}-query.boc"
+		self.AddrFile2Object(wallet)
 		self.WalletVersion2Wallet(wallet)
 		return wallet
 	#end define
 
-	def AddrFile2Wallet(self, wallet, addrFilePath):
+	def AddrFile2Object(self, object):
 		#args = ["show-addr.fif", filePath]
 		#result = self.fift.Run(args)
-		#wallet.fullAddr = Pars(result, "Source wallet address = ", '\n').replace(' ', '')
+		#object.addrFull = Pars(result, "Source wallet address = ", '\n').replace(' ', '')
 		#buff = self.GetVarFromWorkerOutput(result, "Bounceable address (for later access)")
-		#wallet.addr = buff.replace(' ', '')
+		#object.addrB64 = buff.replace(' ', '')
 		#buff = self.GetVarFromWorkerOutput(result, "Non-bounceable address (for init only)")
-		#wallet.addr_init = buff.replace(' ', '')
+		#object.addrB64_init = buff.replace(' ', '')
 
-		file = open(addrFilePath, "rb")
+		file = open(object.addrFilePath, "rb")
 		data = file.read()
-		addr_hex = data[:32].hex()
-		workchain = struct.unpack("i", data[32:])[0]
-		wallet.fullAddr = str(workchain) + ":" + addr_hex
-		wallet.addr = self.HexAddr2Base64Addr(wallet.fullAddr)
-		wallet.addr_init = self.HexAddr2Base64Addr(wallet.fullAddr, False)
-		wallet.Refresh()
+		object.addr = data[:32].hex()
+		object.workchain = struct.unpack("i", data[32:])[0]
+		object.addrFull = f"{object.workchain}:{object.addr}"
+		object.addrB64 = self.AddrFull2AddrB64(object.addrFull)
+		object.addrB64_init = self.AddrFull2AddrB64(object.addrFull, bounceable=False)
 	#end define
 	
 	def WalletVersion2Wallet(self, wallet):
@@ -929,22 +895,22 @@ class MyTonCore():
 		if wallet.version is not None:
 			return
 		walletsVersionList = self.GetWalletsVersionList()
-		account = self.GetAccount(wallet.addr)
-		version = walletsVersionList.get(wallet.addr)
+		account = self.GetAccount(wallet.addrB64)
+		version = walletsVersionList.get(wallet.addrB64)
 		if version is None:
 			version = self.GetWalletVersionFromHash(account.codeHash)
 		if version is None:
-			local.AddLog("Wallet version not found: " + wallet.addr, "error")
+			local.AddLog("Wallet version not found: " + wallet.addrB64, "error")
 			return
 		#end if
 		
-		self.SetWalletVersion(wallet.addr, version)
+		self.SetWalletVersion(wallet.addrB64, version)
 		wallet.version = version
 	#end define
 	
-	def SetWalletVersion(self, addr, version):
+	def SetWalletVersion(self, addrB64, version):
 		walletsVersionList = self.GetWalletsVersionList()
-		walletsVersionList[addr] = version
+		walletsVersionList[addrB64] = version
 		local.dbSave()
 	#end define
 	
@@ -1675,7 +1641,7 @@ class MyTonCore():
 	def CreateElectionRequest(self, wallet, startWorkTime, adnlAddr, maxFactor):
 		local.AddLog("start CreateElectionRequest function", "debug")
 		fileName = self.tempDir + str(startWorkTime) + "_validator-to-sign.bin"
-		args = ["validator-elect-req.fif", wallet.addr, startWorkTime, maxFactor, adnlAddr, fileName]
+		args = ["validator-elect-req.fif", wallet.addrB64, startWorkTime, maxFactor, adnlAddr, fileName]
 		result = self.fift.Run(args)
 		fileName = Pars(result, "Saved to file ", '\n')
 		resultList = result.split('\n')
@@ -1701,7 +1667,7 @@ class MyTonCore():
 	def SignElectionRequestWithValidator(self, wallet, startWorkTime, adnlAddr, validatorPubkey_b64, validatorSignature, maxFactor):
 		local.AddLog("start SignElectionRequestWithValidator function", "debug")
 		fileName = self.tempDir + str(startWorkTime) + "_validator-query.boc"
-		args = ["validator-elect-signed.fif", wallet.addr, startWorkTime, maxFactor, adnlAddr, validatorPubkey_b64, validatorSignature, fileName]
+		args = ["validator-elect-signed.fif", wallet.addrB64, startWorkTime, maxFactor, adnlAddr, validatorPubkey_b64, validatorSignature, fileName]
 		result = self.fift.Run(args)
 		pubkey = Pars(result, "validator public key ", '\n')
 		fileName = Pars(result, "Saved to file ", '\n')
@@ -1712,7 +1678,7 @@ class MyTonCore():
 		local.AddLog("start SignBocWithWallet function", "debug")
 		
 		# Balance checking
-		account = self.GetAccount(wallet.addr)
+		account = self.GetAccount(wallet.addrB64)
 		if account.balance < coins + 0.1:
 			raise Exception("Wallet balance is less than requested coins")
 		#end if
@@ -1762,10 +1728,10 @@ class MyTonCore():
 			raise Exception("WaitTransaction error: time out")
 	#end define
 
-	def GetReturnedStake(self, fullElectorAddr, walletAddr):
+	def GetReturnedStake(self, fullElectorAddr, inputAddr):
 		local.AddLog("start GetReturnedStake function", "debug")
-		account = self.GetAccount(walletAddr)
-		cmd = f"runmethodfull {fullElectorAddr} compute_returned_stake 0x{account.addr}"
+		workchain, addr = self.ParseInputAddr(inputAddr)
+		cmd = f"runmethodfull {fullElectorAddr} compute_returned_stake 0x{addr}"
 		result = self.liteClient.Run(cmd)
 		returnedStake = self.GetVarFromWorkerOutput(result, "result")
 		returnedStake = returnedStake.replace(' ', '')
@@ -1812,25 +1778,25 @@ class MyTonCore():
 		return maxFactor
 	#end define
 	
-	def GetNominationControllerLastSentStakeTime(self, addr):
-		cmd = "runmethodfull {addr} all_data".format(addr=addr)
+	def GetNominationControllerLastSentStakeTime(self, addrB64):
+		cmd = f"runmethodfull {addrB64} all_data"
 		result = self.liteClient.Run(cmd)
 		buff = self.Result2List(result)
 		return buff[-1]
 	#end define
 	
-	def IsNominationControllerReadyToStake(self, addr):
+	def IsNominationControllerReadyToStake(self, addrB64):
 		now = GetTimestamp()
 		config15 = self.GetConfig15()
-		lastSentStakeTime = self.GetNominationControllerLastSentStakeTime(addr)
+		lastSentStakeTime = self.GetNominationControllerLastSentStakeTime(addrB64)
 		stakeFreezeDelay = config15["validatorsElectedFor"] + config15["stakeHeldFor"]
 		result = lastSentStakeTime + stakeFreezeDelay < now
 		return result
 	#end define
 	
-	def IsNominationControllerReadyToVote(self, addr):
+	def IsNominationControllerReadyToVote(self, addrB64):
 		vwl = self.GetValidatorsWalletsList()
-		result = addr in vwl
+		result = addrB64 in vwl
 		return result
 	#end define
 	
@@ -1839,9 +1805,9 @@ class MyTonCore():
 		nominationControllerList = ["nomination_controller_001", "nomination_controller_002"]
 		for item in nominationControllerList:
 			wallet = self.GetLocalWallet(item)
-			if mode == "stake" and self.IsNominationControllerReadyToStake(wallet.addr):
+			if mode == "stake" and self.IsNominationControllerReadyToStake(wallet.addrB64):
 				return wallet
-			if mode == "vote" and self.IsNominationControllerReadyToVote(wallet.addr):
+			if mode == "vote" and self.IsNominationControllerReadyToVote(wallet.addrB64):
 				return wallet
 		raise Exception("Validator сontroller not found")
 	#end define
@@ -1861,13 +1827,13 @@ class MyTonCore():
 		usePool = local.db.get("usePool")
 		pool = self.GetPool(mode="stake")
 		wallet = self.GetValidatorWallet()
-		addr = wallet.addr
+		addrB64 = wallet.addrB64
 		if wallet is None:
 			raise Exception("Validator wallet not found")
 		#end if
 		
 		if usePool:
-			addr = pool.addr
+			addrB64 = pool.addrB64
 		#end if
 
 		local.AddLog("start ElectionEntry function", "debug")
@@ -1900,7 +1866,7 @@ class MyTonCore():
 		#end if
 
 		# Get account balance and minimum stake
-		account = self.GetAccount(addr)
+		account = self.GetAccount(addrB64)
 		minStake = self.GetMinStake()
 
 		# Calculate stake
@@ -1939,7 +1905,7 @@ class MyTonCore():
 			validatorPubkey, resultFilePath = self.SignElectionRequestWithPoolWithValidator(pool, startWorkTime, adnlAddr, validatorPubkey_b64, validatorSignature, maxFactor, stake)
 			
 			# Send boc file to TON
-			resultFilePath = self.SignBocWithWallet(wallet, resultFilePath, pool.addr, 1.1)
+			resultFilePath = self.SignBocWithWallet(wallet, resultFilePath, pool.addrB64, 1.1)
 			self.SendFile(resultFilePath, wallet)
 		else:
 			var1 = self.CreateElectionRequest(wallet, startWorkTime, adnlAddr, maxFactor)
@@ -2002,17 +1968,15 @@ class MyTonCore():
 		local.AddLog("ReturnStake completed")
 	#end define
 	
-	def ReturnStakeWithPool(self, pool):
+	def ReturnStakeWithPool(self, poolAddr):
 		wallet = self.GetValidatorWallet()
 		if wallet is None:
 			raise Exception("Validator wallet not found")
-		if pool is None:
-			raise Exception("Validator pool not found or not ready")
 		#end if
 		
 		local.AddLog("start ReturnStakeWithPool function", "debug")
 		resultFilePath = self.RecoverStakeWithPool()
-		resultFilePath = self.SignBocWithWallet(wallet, resultFilePath, pool.addr, 1.2)
+		resultFilePath = self.SignBocWithWallet(wallet, resultFilePath, poolAddr, 1.2)
 		self.SendFile(resultFilePath, wallet)
 		local.AddLog("ReturnStakeWithPool completed")
 	#end define
@@ -2022,7 +1986,7 @@ class MyTonCore():
 		wallet = self.GetValidatorWallet()
 		pools = self.GetPools()
 		for pool in pools:
-			self.PoolUpdateValidatorSet(pool.addr, wallet)
+			self.PoolUpdateValidatorSet(pool.addrB64, wallet)
 	#end define
 	
 	def PoolUpdateValidatorSet(self, poolAddr, wallet):
@@ -2063,7 +2027,7 @@ class MyTonCore():
 		local.AddLog("start PoolWithdrawRequests function", "debug")
 		while self.HasPoolWithdrawRequests(pool):
 			resultFilePath = self.PoolProcessWihtdrawRequests()
-			resultFilePath = self.SignBocWithWallet(wallet, resultFilePath, pool.addr, 10)
+			resultFilePath = self.SignBocWithWallet(wallet, resultFilePath, pool.addrB64, 10)
 			self.SendFile(resultFilePath, wallet)
 			local.AddLog("PoolWithdrawRequests completed")
 			time.sleep(60)
@@ -2081,7 +2045,7 @@ class MyTonCore():
 	#end define
 	
 	def HasPoolWithdrawRequests(self, pool):
-		cmd = f"runmethodfull {pool.addr} has_withdraw_requests"
+		cmd = f"runmethodfull {pool.addrB64} has_withdraw_requests"
 		result = self.liteClient.Run(cmd)
 		buff = self.Result2List(result)
 		data = int(buff[0])
@@ -2126,7 +2090,7 @@ class MyTonCore():
 				raise Exception("CreateWallet error")
 			#end if
 		wallet = self.GetLocalWallet(name, version)
-		self.SetWalletVersion(wallet.addr, version)
+		self.SetWalletVersion(wallet.addrB64, version)
 		return wallet
 	#end define
 
@@ -2142,7 +2106,7 @@ class MyTonCore():
 				raise Exception("CreateHighWallet error")
 			#end if
 		hwallet = self.GetLocalWallet(name, version, subwallet)
-		self.SetWalletVersion(hwallet.addr, version)
+		self.SetWalletVersion(hwallet.addrB64, version)
 		return hwallet
 	#end define
 
@@ -2150,7 +2114,7 @@ class MyTonCore():
 		local.AddLog("start ActivateWallet function", "debug")
 		for i in range(10):
 			time.sleep(3)
-			account = self.GetAccount(wallet.addr)
+			account = self.GetAccount(wallet.addrB64)
 			if account.balance > 0:
 				self.SendFile(wallet.bocFilePath, wallet)
 				return
@@ -2158,10 +2122,10 @@ class MyTonCore():
 			raise Exception("ActivateWallet error: time out")
 	#end define
 	
-	def ImportWallet(self, addr, key):
-		workchain, addr_hex = self.ParseAddrB64(addr)
+	def ImportWallet(self, addrB64, key):
+		workchain, addr = self.ParseAddrB64(addrB64)
 		workchain_bytes = int.to_bytes(workchain, 4, "big", signed=True)
-		addr_bytes = bytes.fromhex(addr_hex)
+		addr_bytes = bytes.fromhex(addr)
 		key_bytes = base64.b64decode(key)
 		
 		walletName = self.GenerateWalletName()
@@ -2185,7 +2149,7 @@ class MyTonCore():
 		file.close()
 		key = base64.b64encode(data).decode("utf-8")
 		
-		return wallet.addr, key
+		return wallet.addrB64, key
 	#end define
 
 	def GetWalletsNameList(self):
@@ -2238,7 +2202,7 @@ class MyTonCore():
 		wallets = self.GetWallets()
 		for wallet in wallets:
 			if os.path.isfile(wallet.bocFilePath):
-				account = self.GetAccount(wallet.addr)
+				account = self.GetAccount(wallet.addrB64)
 				if account.balance > 0:
 					self.SendFile(wallet.bocFilePath, wallet)
 	#end define
@@ -2267,7 +2231,7 @@ class MyTonCore():
 		#end if
 		
 		# Balance checking
-		account = self.GetAccount(wallet.addr)
+		account = self.GetAccount(wallet.addrB64)
 		if account.balance < coins + 0.1:
 			raise Exception("Wallet balance is less than requested coins")
 		#end if
@@ -2294,9 +2258,9 @@ class MyTonCore():
 		local.AddLog("start MoveCoinsThroughProxy function", "debug")
 		wallet1 = self.CreateWallet("proxy_wallet1", 0)
 		wallet2 = self.CreateWallet("proxy_wallet2", 0)
-		self.MoveCoins(wallet, wallet1.addr_init, coins)
+		self.MoveCoins(wallet, wallet1.addrB64_init, coins)
 		self.ActivateWallet(wallet1)
-		self.MoveCoins(wallet1, wallet2.addr_init, "alld")
+		self.MoveCoins(wallet1, wallet2.addrB64_init, "alld")
 		self.ActivateWallet(wallet2)
 		self.MoveCoins(wallet2, dest, "alld", flags=["-n"])
 		wallet1.Delete()
@@ -2409,7 +2373,7 @@ class MyTonCore():
 			item["stake"] = ng2g(entry[1][0])
 			item["maxFactor"] = round(entry[1][1] / 655.36) / 100.0
 			item["walletAddr_hex"] = Dec2HexAddr(entry[1][2])
-			item["walletAddr"] = self.HexAddr2Base64Addr("-1:"+item["walletAddr_hex"])
+			item["walletAddr"] = self.AddrFull2AddrB64("-1:"+item["walletAddr_hex"])
 			entries[adnlAddr] = item
 		#end for
 
@@ -2627,7 +2591,7 @@ class MyTonCore():
 			item["severity"] = buff[3] # *severity*
 			rewardAddr = buff[4]
 			rewardAddr = "-1:" + Dec2HexAddr(rewardAddr)
-			rewardAddr = self.HexAddr2Base64Addr(rewardAddr)
+			rewardAddr = self.AddrFull2AddrB64(rewardAddr)
 			item["rewardAddr"] = rewardAddr # *reward_addr*
 			item["paid"] = buff[5] # *paid*
 			suggestedFine = buff[6] # *suggested_fine*
@@ -2953,7 +2917,7 @@ class MyTonCore():
 		# Check wallet and balance
 		if wallet is None:
 			raise Exception("Validator wallet not fond")
-		account = self.GetAccount(wallet.addr)
+		account = self.GetAccount(wallet.addrB64)
 		if account.balance < 300:
 			raise Exception("Validator wallet balance must be greater than 300")
 		for key, item in data.items():
@@ -3201,7 +3165,7 @@ class MyTonCore():
 		#end if
 
 		fileName = self.tempDir + "dns-msg-body.boc"
-		args = ["auto-dns.fif", dnsAddr, "add", subdomain, expireInSec, "owner", wallet.addr, "cat", catId, "adnl", domain["adnlAddr"], "-o", fileName]
+		args = ["auto-dns.fif", dnsAddr, "add", subdomain, expireInSec, "owner", wallet.addrB64, "cat", catId, "adnl", domain["adnlAddr"], "-o", fileName]
 		result = self.fift.Run(args)
 		resultFilePath = Pars(result, "Saved to file ", ')')
 		resultFilePath = self.SignBocWithWallet(wallet, resultFilePath, dnsAddr, 1.7)
@@ -3371,27 +3335,27 @@ class MyTonCore():
 			walletsNameList = self.GetWalletsNameList()
 			if destination in walletsNameList:
 				wallet = self.GetLocalWallet(destination)
-				destination = wallet.addr
+				destination = wallet.addrB64
 			else:
 				destination = self.GetBookmarkAddr("account", destination)
 		elif destinationType == "account_hex":
-			destination = self.HexAddr2Base64Addr(destination)
+			destination = self.AddrFull2AddrB64(destination)
 		return destination
 	#end define
 
-	def HexAddr2Base64Addr(self, fullAddr, bounceable=True, testnet=False):
-		buff = fullAddr.split(':')
+	def AddrFull2AddrB64(self, addrFull, bounceable=True, testnet=False):
+		buff = addrFull.split(':')
 		workchain = int(buff[0])
-		addr_hex = buff[1]
-		if len(addr_hex) != 64:
-			raise Exception("HexAddr2Base64Addr error: Invalid length of hexadecimal address")
+		addr = buff[1]
+		if len(addr) != 64:
+			raise Exception("AddrFull2AddrB64 error: Invalid length of hexadecimal address")
 		#end if
 
 		# Create base64 address
 		b = bytearray(36)
 		b[0] = 0x51 - bounceable * 0x40 + testnet * 0x80
 		b[1] = workchain % 256
-		b[2:34] = bytearray.fromhex(addr_hex)
+		b[2:34] = bytearray.fromhex(addr)
 		buff = bytes(b[:34])
 		crc = crc16.crc16xmodem(buff)
 		b[34] = crc >> 8
@@ -3577,7 +3541,7 @@ class MyTonCore():
 		cert = base64.b64encode(data).decode("utf-8")
 		
 		destHex = "0:" + adnl
-		destAddr = self.HexAddr2Base64Addr(destHex, bounceable=False)
+		destAddr = self.AddrFull2AddrB64(destHex, bounceable=False)
 		wallet = self.GetValidatorWallet(mode="vote")
 		flags = ["--comment", cert]
 		self.MoveCoins(wallet, destAddr, 0.001, flags=flags)
@@ -3592,13 +3556,13 @@ class MyTonCore():
 		
 		cert = None
 		addrFull = "0:" + adnl
-		addr = self.HexAddr2Base64Addr(addrFull)
+		addr = self.AddrFull2AddrB64(addrFull)
 		account = self.GetAccount(addr)
 		history = self.GetAccountHistory(account, 10)
 		vwl = self.GetValidatorsWalletsList()
 		for message in history:
 			srcAddrFull = f"{message.srcWorkchain}:{message.srcAddr}"
-			srcAddrFull = self.HexAddr2Base64Addr(srcAddrFull)
+			srcAddrFull = self.AddrFull2AddrB64(srcAddrFull)
 			if srcAddrFull not in vwl:
 				continue
 			comment = message.comment
@@ -3681,7 +3645,7 @@ class MyTonCore():
 		print("result:", result)
 		version = "v3r3"
 		wallet = self.GetLocalWallet(name, version)
-		self.SetWalletVersion(wallet.addr, version)
+		self.SetWalletVersion(wallet.addrB64, version)
 	#end define
 	
 	def DepositToNominationController(self, walletName, destAddr, amount):
@@ -3718,7 +3682,7 @@ class MyTonCore():
 		print("result:", result)
 		version = "v3r4"
 		wallet = self.GetLocalWallet(name, version)
-		self.SetWalletVersion(wallet.addr, version)
+		self.SetWalletVersion(wallet.addrB64, version)
 	#end define
 	
 	def CreatePool(self, poolName, validatorRewardShare, maxNominatorsCount, minValidatorStake, minNominatorStake):
@@ -3735,7 +3699,7 @@ class MyTonCore():
 		
 		fiftScript = self.contractsDir + "nominator-pool/func/new-pool.fif"
 		wallet = self.GetValidatorWallet()
-		args = [fiftScript, wallet.addr, validatorRewardShare, maxNominatorsCount, minValidatorStake, minNominatorStake, filePath]
+		args = [fiftScript, wallet.addrB64, validatorRewardShare, maxNominatorsCount, minValidatorStake, minNominatorStake, filePath]
 		result = self.fift.Run(args)
 		if "Saved pool" not in result:
 			raise Exception("CreatePool error")
@@ -3746,7 +3710,7 @@ class MyTonCore():
 		local.AddLog("start ActivatePool function", "debug")
 		for i in range(10):
 			time.sleep(3)
-			account = self.GetAccount(pool.addr)
+			account = self.GetAccount(pool.addrB64)
 			if account.balance > 0:
 				self.SendFile(pool.bocFilePath, pool, wait=False)
 				return
@@ -3778,7 +3742,7 @@ class MyTonCore():
 		local.AddLog("start SignElectionRequestWithPoolWithValidator function", "debug")
 		fileName = self.tempDir + str(startWorkTime) + "_validator-query.boc"
 		fiftScript = self.contractsDir + "nominator-pool/func/validator-elect-signed.fif"
-		args = [fiftScript, pool.addr, startWorkTime, maxFactor, adnlAddr, validatorPubkey_b64, validatorSignature, fileName, stake]
+		args = [fiftScript, pool.addrB64, startWorkTime, maxFactor, adnlAddr, validatorPubkey_b64, validatorSignature, fileName, stake]
 		result = self.fift.Run(args)
 		pubkey = Pars(result, "validator public key ", '\n')
 		fileName = Pars(result, "Saved to file ", '\n')
@@ -3830,7 +3794,7 @@ class MyTonCore():
 			raise Exception(f"GetLocalPool error: Address file not found: {pool.addrFilePath}")
 		#end if
 		
-		self.AddrFile2Wallet(pool, pool.addrFilePath)
+		self.AddrFile2Object(pool)
 		return pool
 	#end define
 	
@@ -3858,31 +3822,31 @@ class MyTonCore():
 	def GetPool(self, mode):
 		pools = self.GetPools()
 		for pool in pools:
-			if mode == "stake" and self.IsPoolReadyToStake(pool.addr):
+			if mode == "stake" and self.IsPoolReadyToStake(pool.addrB64):
 				return pool
-			if mode == "vote" and self.IsPoolReadyToVote(pool.addr):
+			if mode == "vote" and self.IsPoolReadyToVote(pool.addrB64):
 				return pool
 		raise Exception("Validator pool not found or not ready")
 	#end define
 	
-	def GetPoolLastSentStakeTime(self, addr):
-		poolData = self.GetPoolData(addr)
+	def GetPoolLastSentStakeTime(self, addrB64):
+		poolData = self.GetPoolData(addrB64)
 		return poolData["stake_at"]
 	#end define
 	
-	def IsPoolReadyToStake(self, addr):
+	def IsPoolReadyToStake(self, addrB64):
 		now = GetTimestamp()
 		config15 = self.GetConfig15()
-		lastSentStakeTime = self.GetPoolLastSentStakeTime(addr)
+		lastSentStakeTime = self.GetPoolLastSentStakeTime(addrB64)
 		stakeFreezeDelay = config15["validatorsElectedFor"] + config15["stakeHeldFor"]
 		result = lastSentStakeTime + stakeFreezeDelay < now
-		print(f"{addr}: {result}. {lastSentStakeTime}, {stakeFreezeDelay}, {now}")
+		print(f"{addrB64}: {result}. {lastSentStakeTime}, {stakeFreezeDelay}, {now}")
 		return result
 	#end define
 	
-	def IsPoolReadyToVote(self, addr):
+	def IsPoolReadyToVote(self, addrB64):
 		vwl = self.GetValidatorsWalletsList()
-		result = addr in vwl
+		result = addrB64 in vwl
 		return result
 	#end define
 	
