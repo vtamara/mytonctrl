@@ -4,12 +4,16 @@
 import pwd
 import random
 import requests
+import platform
 from mypylib.mypylib import *
 from mypyconsole.mypyconsole import *
 
 local = MyPyClass(__file__)
 console = MyPyConsole()
 defaultLocalConfigPath = "/usr/bin/ton/local.config.json"
+psys = platform.system()
+if psys == "OpenBSD":
+	defaultLocalConfigPath = "/var/ton-work/mytonctrl/local.config.json"
 
 
 def Init():
@@ -23,6 +27,16 @@ def Init():
 	# create variables
 	user = os.environ.get("USER", "root")
 	local.buffer["user"] = user
+	psys = platform.system()
+
+	binDir = "/usr/bin/"
+	srcDir = "/usr/src/"
+	if psys == "OpenBSD":
+		binDir = "/usr/local/bin/"
+		srcDir = "/var/ton-work/src/"
+	local.buffer["binDir"] = binDir
+	local.buffer["srcDir"] = srcDir
+
 	local.buffer["vuser"] = "validator"
 	local.buffer["cport"] = random.randint(2000, 65000)
 	local.buffer["lport"] = random.randint(2000, 65000)
@@ -43,20 +57,33 @@ def Init():
 
 def Refresh():
 	user = local.buffer["user"]
-	local.buffer["mconfigPath"] = "/home/{user}/.local/share/mytoncore/mytoncore.db".format(user=user)
+	psys = platform.system()
+
+	tonWorkDir = "/var/ton-work/"
+	local.buffer["tonWorkDir"] = tonWorkDir
+	local.buffer["mconfigPath_user"] = "/home/{user}/.local/share/mytoncore/mytoncore.db".format(user=user)
+	local.buffer["mconfigPath_root"] = "/usr/local/bin/mytoncore/mytoncore.db"
+	if psys == "OpenBSD":
+		local.buffer["mconfigPath_root"] = tonWorkDir + "/mytoncore/mytoncore.db"
+
 	if user == 'root':
-		local.buffer["mconfigPath"] = "/usr/local/bin/mytoncore/mytoncore.db"
+		local.buffer["mconfigPath"] = local.buffer["mconfigPath_root"]
+	else:
+		local.buffer["mconfigPath"] = local.buffer["mconfigPath_user"]
 	#end if
 
 	# create variables
 	binDir = "/usr/bin/"
 	srcDir = "/usr/src/"
-	tonWorkDir = "/var/ton-work/"
 	tonBinDir = binDir + "ton/"
 	tonSrcDir = srcDir + "ton/"
+	if psys == "OpenBSD":
+		binDir = "/usr/local/bin/"
+		srcDir = tonWorkDir + "src/"
+		tonBinDir = binDir
+		tonSrcDir = srcDir + "ton/"
 	local.buffer["binDir"] = binDir
 	local.buffer["srcDir"] = srcDir
-	local.buffer["tonWorkDir"] = tonWorkDir
 	local.buffer["tonBinDir"] = tonBinDir
 	local.buffer["tonSrcDir"] = tonSrcDir
 	tonDbDir = tonWorkDir + "db/"
@@ -64,9 +91,32 @@ def Refresh():
 	local.buffer["tonDbDir"] = tonDbDir
 	local.buffer["keysDir"] = keysDir
 	local.buffer["tonLogPath"] = tonWorkDir + "log"
+	local.buffer["vconfigPath"] = tonDbDir + "config.json"
+
 	local.buffer["validatorAppPath"] = tonBinDir + "validator-engine/validator-engine"
 	local.buffer["globalConfigPath"] = tonBinDir + "global.config.json"
-	local.buffer["vconfigPath"] = tonDbDir + "config.json"
+	local.buffer["fift"] = tonBinDir + "crypto/fift"
+	local.buffer["fift_libsPath"] = tonSrcDir + "crypto/fift/lib"
+	local.buffer["fift_smartcontsPath"] = tonSrcDir + "crypto/smartcont"
+	local.buffer["lite-client"] = tonBinDir + "lite-client/lite-client"
+	local.buffer["miner"] = tonBinDir + "crypto/pow-miner"
+	local.buffer["validator-engine-console"] = tonBinDir + "validator-engine-console/validator-engine-console"
+	local.buffer["dht_server"] = tonBinDir + "dht-server/dht-server"
+	local.buffer["generate_random_id"] = tonBinDir + "utils/generate-random-id"
+	if psys == "OpenBSD" :
+		local.buffer["validatorAppPath"] = tonBinDir + "validator-engine"
+		local.buffer["globalConfigPath"] = tonWorkDir + "/mytonctrl/global.config.json"
+		local.buffer["fift"] = tonBinDir + "fift"
+		local.buffer["fift_libsPath"] = "/usr/local/lib/fift/"
+		local.buffer["fift_smartcontsPath"] = "/usr/local/share/ton/smartcont"
+		local.buffer["lite-client"] = tonBinDir + "lite-client"
+		local.buffer["miner"] = tonBinDir + "pow-miner"
+		local.buffer["validator-engine-console"] = tonBinDir + "validator-engine-console"
+		local.buffer["dht_server"] = tonBinDir + "dht-server"
+		local.buffer["generate_random_id"] = tonBinDir + "generate-random-id"
+
+	local.buffer["tonDhtServerDir"] = "/var/ton-dht-server/"
+
 #end define
 
 def Status(args):
@@ -143,7 +193,7 @@ def CreateLocalConfig(initBlock, localConfigPath=defaultLocalConfigPath):
 	from mytoncore import hex2base64
 
 	# read global config file
-	file = open("/usr/bin/ton/global.config.json", 'rt')
+	file = open(local.buffer["globalConfigPath"], 'rt')
 	text = file.read()
 	data = json.loads(text)
 	file.close()
@@ -262,6 +312,7 @@ def FirstNodeSettings():
 	validatorAppPath = local.buffer["validatorAppPath"]
 	globalConfigPath = local.buffer["globalConfigPath"]
 	vconfigPath = local.buffer["vconfigPath"]
+	psys = platform.system()
 
 	# Проверить конфигурацию
 	if os.path.isfile(vconfigPath):
@@ -276,6 +327,8 @@ def FirstNodeSettings():
 	if vuser not in text:
 		local.AddLog("Creating new user: " + vuser, "debug")
 		args = ["/usr/sbin/useradd", "-d", "/dev/null", "-s", "/dev/null", vuser]
+		if psys == "OpenBSD" :
+			args = ["/usr/sbin/useradd", "-d", "/var/empty", "-s", "/sbin/nologin", vuser]
 		subprocess.run(args)
 	#end if
 
@@ -340,13 +393,14 @@ def DownloadDump():
 def FirstMytoncoreSettings():
 	local.AddLog("start FirstMytoncoreSettings fuction", "debug")
 	user = local.buffer["user"]
+	srcDir = local.buffer["srcDir"]
 
 	# Прописать mytoncore.py в автозагрузку
-	Add2Systemd(name="mytoncore", user=user, start="/usr/bin/python3 /usr/src/mytonctrl/mytoncore.py")
+	Add2Systemd(name="mytoncore", user=user, start="python3 {srcDir}mytonctrl/mytoncore.py".format(srcDir=srcDir))
 
 	# Проверить конфигурацию
-	path = "/home/{user}/.local/share/mytoncore/mytoncore.db".format(user=user)
-	path2 = "/usr/local/bin/mytoncore/mytoncore.db"
+	path = local.buffer["mconfigPath_user"]
+	path2 = local.buffer["mconfigPath_root"] 
 	if os.path.isfile(path) or os.path.isfile(path2):
 		local.AddLog("mytoncore.db already exist. Break FirstMytoncoreSettings fuction", "warning")
 		return
@@ -379,20 +433,20 @@ def FirstMytoncoreSettings():
 
 	# fift
 	fift = dict()
-	fift["appPath"] = tonBinDir + "crypto/fift"
-	fift["libsPath"] = tonSrcDir + "crypto/fift/lib"
-	fift["smartcontsPath"] = tonSrcDir + "crypto/smartcont"
+	fift["appPath"] = local.buffer["fift"]
+	fift["libsPath"] = local.buffer["fift_libsPath"]
+	fift["smartcontsPath"] = local.buffer["fift_smartcontsPath"]
 	mconfig["fift"] = fift
 
 	# lite-client
 	liteClient = dict()
-	liteClient["appPath"] = tonBinDir + "lite-client/lite-client"
-	liteClient["configPath"] = tonBinDir + "global.config.json"
+	liteClient["appPath"] = local.buffer["lite-client"]
+	liteClient["configPath"] = local.buffer["globalConfigPath"]
 	mconfig["liteClient"] = liteClient
 
 	# miner
 	miner = dict()
-	miner["appPath"] = tonBinDir + "crypto/pow-miner"
+	miner["appPath"] = local.buffer["miner"]
 	mconfig["miner"] = miner
 
 	# Telemetry
@@ -487,7 +541,7 @@ def EnableValidatorConsole():
 
 	# edit mytoncore config file
 	validatorConsole = dict()
-	validatorConsole["appPath"] = tonBinDir + "validator-engine-console/validator-engine-console"
+	validatorConsole["appPath"] = local.buffer["validator-engine-console"]
 	validatorConsole["privKeyPath"] = client_key
 	validatorConsole["pubKeyPath"] = server_pubkey
 	validatorConsole["addr"] = "127.0.0.1:{cport}".format(cport=cport)
@@ -592,11 +646,20 @@ def EnableLiteServer():
 	StartMytoncore()
 #end define
 
+
+def restart(service):
+	args = ["systemctl", "restart", service]
+	psys = platform.system()
+	if psys == "OpenBSD" :
+		args = ["rcctl", "restart", service]
+	subprocess.run(args)
+
+
 def StartValidator():
 	# restart validator
 	local.AddLog("Start/restart validator service", "debug")
-	args = ["systemctl", "restart", "validator"]
-	subprocess.run(args)
+
+	restart("validator")
 
 	# sleep 10 sec
 	local.AddLog("sleep 10 sec", "debug")
@@ -606,8 +669,7 @@ def StartValidator():
 def StartMytoncore():
 	# restart mytoncore
 	local.AddLog("Start/restart mytoncore service", "debug")
-	args = ["systemctl", "restart", "mytoncore"]
-	subprocess.run(args)
+	restart("mytoncore")
 #end define
 
 def GetConfig(**kwargs):
@@ -682,7 +744,7 @@ def DangerousRecoveryValidatorConfigFile():
 
 	# Get keys from keyring
 	keys = list()
-	keyringDir = "/var/ton-work/db/keyring/"
+	keyringDir = local.buffer["tonWorkDir"] + "db/keyring/"
 	keyring = os.listdir(keyringDir)
 	os.chdir(keyringDir)
 	sorted(keyring, key=os.path.getmtime)
@@ -779,7 +841,8 @@ def DangerousRecoveryValidatorConfigFile():
 	vconfig["control"] = [buffer]
 
 	# Get dht fragment
-	files = os.listdir("/var/ton-work/db")
+	tonWorkDir = local.buffer["tonWorkDir"]
+	files = os.listdir(tonWorkDir + "db")
 	for item in files:
 		if item[:3] == "dht":
 			dhtS = item[4:]
@@ -892,25 +955,39 @@ def b642hex(input):
 
 def CreateSymlinks():
 	local.AddLog("start CreateSymlinks fuction", "debug")
+	srcDir = local.buffer["srcDir"]
+	binDir = local.buffer["binDir"]
+	psys = platform.system()
 	cport = local.buffer["cport"]
-
-	mytonctrl_file = "/usr/bin/mytonctrl"
-	fift_file = "/usr/bin/fift"
-	liteclient_file = "/usr/bin/lite-client"
-	validator_console_file = "/usr/bin/validator-console"
+	mytonctrl_file = "{binDir}mytonctrl".format(binDir=binDir)
+	fift_file = "{binDir}fift".format(binDir=binDir)
+	fiftbin = local.buffer["fift"]
+	liteclient_file = "{binDir}lite-client".format(binDir=binDir)
+	if psys == "OpenBSD" :
+		liteclient_file = "{binDir}lite-client-gc".format(binDir=binDir)
+	validator_console_file = "{binDir}validator-console".format(binDir=binDir)
 	env_file = "/etc/environment"
+
 	file = open(mytonctrl_file, 'wt')
-	file.write("/usr/bin/python3 /usr/src/mytonctrl/mytonctrl.py $@")
+	file.write("python3 {srcDir}mytonctrl/mytonctrl.py $@".format(srcDir=srcDir))
 	file.close()
-	file = open(fift_file, 'wt')
-	file.write("/usr/bin/ton/crypto/fift $@")
-	file.close()
+
+	if psys != "OpenBSD" :
+		fift_bin = local.buffer["fift"]
+		file = open(fift_file, 'wt')
+		file.write(fiftbin + " $@")
+		file.close()
+
 	file = open(liteclient_file, 'wt')
-	file.write("/usr/bin/ton/lite-client/lite-client -C /usr/bin/ton/global.config.json $@")
+	lite_client_bin = local.buffer["lite-client"]
+	globalconfig_path = local.buffer["globalConfigPath"]
+	file.write("{lite_client_bin} -C {globalconfig_path} $@".format(lite_client_bin=lite_client_bin, globalconfig_path=globalconfig_path))
 	file.close()
 	if cport:
+		tonWorkDir = local.buffer["tonWorkDir"]
+		validatorEngineConsole = local.buffer["validator-engine-console"]
 		file = open(validator_console_file, 'wt')
-		file.write("/usr/bin/ton/validator-engine-console/validator-engine-console -k /var/ton-work/keys/client -p /var/ton-work/keys/server.pub -a 127.0.0.1:" + str(cport) + " $@")
+		file.write("{validatorEngineConsole} -k {tonWorkDir}keys/client -p {tonWorkDir}keys/server.pub -a 127.0.0.1:".format(validatorEngineConsole=validatorEngineConsole, tonWorkDir=tonWorkDir) + str(cport) + " $@")
 		file.close()
 		args = ["chmod", "+x", validator_console_file]
 		subprocess.run(args)
@@ -918,12 +995,15 @@ def CreateSymlinks():
 	subprocess.run(args)
 
 	# env
-	fiftpath = "export FIFTPATH=/usr/src/ton/crypto/fift/lib/:/usr/src/ton/crypto/smartcont/"
-	file = open(env_file, 'rt+')
-	text = file.read()
-	if fiftpath not in text:
-		file.write(fiftpath + '\n')
-	file.close()
+	if psys != "OpenBSD" :
+		smartContsPath = local.buffer["fift_smartcontsPath"]
+		fiftLibsPath = local.buffer["fift_libsPath"]
+		fiftpath = "export FIFTPATH={fiftLibsPath}:{smartContsPath}".format(fiftLibsPath=fiftLibsPath, smartContsPath=smartContsPath)
+		file = open(env_file, 'rt+')
+		text = file.read()
+		if fiftpath not in text:
+			file.write(fiftpath + '\n')
+		file.close()
 #end define
 
 def EnableDhtServer():
@@ -931,13 +1011,13 @@ def EnableDhtServer():
 	vuser = local.buffer["vuser"]
 	tonBinDir = local.buffer["tonBinDir"]
 	globalConfigPath = local.buffer["globalConfigPath"]
-	dht_server = tonBinDir + "dht-server/dht-server"
-	generate_random_id = tonBinDir + "utils/generate-random-id"
-	tonDhtServerDir = "/var/ton-dht-server/"
+	dht_server = local.buffer["dht_server"]
+	generate_random_id = local.buffer["generate_random_id"] 
+	tonDhtServerDir = local.buffer["tonDhtServerDir"] 
 	tonDhtKeyringDir = tonDhtServerDir + "keyring/"
 
 	# Проверить конфигурацию
-	if os.path.isfile("/var/ton-dht-server/config.json"):
+	if os.path.isfile(tonDhtServerDir + "config.json"):
 		local.AddLog("DHT-Server config.json already exist. Break EnableDhtServer fuction", "warning")
 		return
 	#end if
@@ -980,19 +1060,20 @@ def EnableDhtServer():
 	subprocess.run(args)
 
 	# start DHT-Server
-	args = ["systemctl", "restart", "dht-server"]
-	subprocess.run(args)
+	restart("dht-server")
 #end define
 
 def SetWebPassword(args):
-	args = ["python3", "/usr/src/mtc-jsonrpc/mtc-jsonrpc.py", "-p"]
+	srcDir = local.buffer["srcDir"]
+	args = ["python3", "{srcDir}/mtc-jsonrpc/mtc-jsonrpc.py".format(srcDir=srcDir), "-p"]
 	subprocess.run(args)
 #end define
 
 def EnableJsonRpc():
 	local.AddLog("start EnableJsonRpc function", "debug")
+	srcDir = local.buffer["srcDir"]
 	user = local.buffer["user"]
-	exitCode = RunAsRoot(["bash", "/usr/src/mytonctrl/scripts/jsonrpcinstaller.sh", "-u", user])
+	exitCode = RunAsRoot(["bash", "{srcDir}mytonctrl/scripts/jsonrpcinstaller.sh".format(srcDir=srcDir), "-u", user])
 	if exitCode == 0:
 		text = "EnableJsonRpc - {green}OK{endc}"
 	else:
@@ -1003,7 +1084,8 @@ def EnableJsonRpc():
 def EnablePytonv3():
 	local.AddLog("start EnablePytonv3 function", "debug")
 	user = local.buffer["user"]
-	exitCode = RunAsRoot(["bash", "/usr/src/mytonctrl/scripts/pytonv3installer.sh", "-u", user])
+	srcDir = local.buffer["srcDir"]
+	exitCode = RunAsRoot(["bash", "{srcDir}mytonctrl/scripts/pytonv3installer.sh".format(srcDir=srcDir), "-u", user])
 	if exitCode == 0:
 		text = "EnablePytonv3 - {green}OK{endc}"
 	else:

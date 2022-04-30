@@ -15,7 +15,7 @@ mytonctrl compiles the components of the validator into a folder:
 1. /usr/bin/ton/
 
 mytonctrl creates a folder for the validator to work here:
-1. /var/ton/
+1. /var/ton-work/
 
 ===========================================================================================================
 
@@ -42,12 +42,12 @@ If we run mytonctrl as a different user, we get the following error. The solutio
 If we want to change the working directory of the validator before installation, then there are two options:
 1.fork the project and make our changes (man git-fork)
 2.or create a symbolic link:
-`ln -s /opt/ton/var/ton` - Create a link /var/ton that leads to /opt/ton
+`ln -s /opt/ton-work /var/ton-work` - Create a link /var/ton-work that leads to /opt/ton-work
 
 ===========================================================================================================
 
-If we want to change the working directory of the validator from /var/ton/, then after installation we will do the following:
+If we want to change the working directory of the validator from /var/ton-work/, then after installation we will do the following:
 1.` systemctl stop validator`, `systemctl stop mytoncore` - Stop services
-2.`mv /var/ton/* /opt/ton/`- move the validator files
+2.`mv /var/ton-work/* /opt/ton-work/`- move the validator files
 3. Replace the paths in the configuration `~ /.local/share/mytoncore/mytoncore.db`
 4. Then we look at the circumstance - there was no experience of such a transfer

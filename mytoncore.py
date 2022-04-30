@@ -3970,7 +3970,11 @@ def ReadDiskData():
 	for name in disks:
 		data[name] = dict()
 		data[name]["timestamp"] = timestamp
-		data[name]["busyTime"] = buff[name].busy_time
+		if psutil.LINUX or psutil.FREEBSD:
+		    # https://psutil.readthedocs.io/en/latest/#psutil.disk_io_counters
+		    data[name]["busyTime"] = buff[name].busy_time
+		else:
+		    data[name]["busyTime"] = 0
 		data[name]["readBytes"] = buff[name].read_bytes
 		data[name]["writeBytes"] = buff[name].write_bytes
 		data[name]["readCount"] = buff[name].read_count
@@ -4040,13 +4044,24 @@ def CalculateDiskStatistics(zerodata, data, name):
 #end define
 
 def GetDisksList():
-	data = list()
-	buff = os.listdir("/sys/block/")
-	for item in buff:
-		if "loop" in item:
-			continue
-		data.append(item)
-	#end for
+	if psutil.OPENBSD:
+		timeout = 3
+		args = ["sysctl", "-n", "hw.disknames"]
+		process = subprocess.run(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+		output = process.stdout.decode("utf-8")
+		err = process.stderr.decode("utf-8")
+		lines = output.split('\n')
+		nonempty = filter(lambda x: x != '', lines)
+		data = list(map(lambda x: x.split(':')[0], nonempty))
+	else:
+		data = os.listdir("/sys/block/")
+		data = list()
+		buff = os.listdir("/sys/block/")
+		for item in buff:
+			if "loop" in item:
+				continue
+			data.append(item)
+		#end for
 	data.sort()
 	return data
 #end define
