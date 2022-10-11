@@ -474,7 +474,7 @@ def EnableValidatorConsole():
 	tonDbDir = local.buffer["tonDbDir"]
 	tonBinDir = local.buffer["tonBinDir"]
 	vconfigPath = local.buffer["vconfigPath"]
-	generate_random_id = tonBinDir + "utils/generate-random-id"
+	generate_random_id = local.buffer["generate_random_id"]
 	keysDir = local.buffer["keysDir"]
 	client_key = keysDir + "client"
 	server_key = keysDir + "server"
