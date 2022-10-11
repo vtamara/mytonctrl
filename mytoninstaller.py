@@ -571,7 +571,7 @@ def EnableLiteServer():
 	keysDir = local.buffer["keysDir"]
 	tonBinDir = local.buffer["tonBinDir"]
 	vconfigPath = local.buffer["vconfigPath"]
-	generate_random_id = tonBinDir + "utils/generate-random-id"
+	generate_random_id = local.buffer["generate_random_id"]
 	liteserver_key = keysDir + "liteserver"
 	liteserver_pubkey = liteserver_key + ".pub"
 
